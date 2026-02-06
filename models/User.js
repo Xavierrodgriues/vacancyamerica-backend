@@ -26,7 +26,15 @@ const userSchema = mongoose.Schema({
     bio: {
         type: String,
         default: null
-    }
+    },
+    friends: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    blocked_users: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }]
 }, {
     timestamps: true
 });

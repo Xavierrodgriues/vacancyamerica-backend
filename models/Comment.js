@@ -14,6 +14,18 @@ const commentSchema = mongoose.Schema({
     content: {
         type: String,
         required: true
+    },
+    parent_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Comment',
+        default: null
+    },
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: {
+        type: Date
     }
 }, {
     timestamps: true

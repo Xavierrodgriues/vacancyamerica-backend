@@ -17,6 +17,7 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/posts', require('./routes/postRoutes'));
 app.use('/api/comments', require('./routes/commentRoutes'));
+app.use('/api/friends', require('./routes/friendRoutes'));
 
 const PORT = process.env.PORT || 5000;
 

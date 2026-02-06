@@ -129,10 +129,36 @@ const updateProfile = async (req, res) => {
     }
 };
 
+// @desc    Search users by username or display name
+// @route   GET /api/auth/search?q=query
+// @access  Public
+const searchUsers = async (req, res) => {
+    try {
+        const query = req.query.q;
+        if (!query) {
+            return res.status(400).json({ message: 'Query parameter q is required' });
+        }
+
+        const users = await User.find({
+            $or: [
+                { username: { $regex: query, $options: 'i' } },
+                { display_name: { $regex: query, $options: 'i' } }
+            ]
+        })
+            .select('_id username display_name avatar_url')
+            .limit(10);
+
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
     getMe,
     getUserByUsername,
     updateProfile,
+    searchUsers,
 };
