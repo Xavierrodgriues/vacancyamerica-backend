@@ -37,21 +37,26 @@ const getUserPosts = async (req, res) => {
 const createPost = async (req, res) => {
     const { content } = req.body;
     let image_url = null;
+    let video_url = null;
 
     if (req.file) {
         // Construct URL for the uploaded file
-        // Assuming server runs on localhost:5000 reachable from frontend
-        // In production this should be an env var
         const protocol = req.protocol;
         const host = req.get('host');
-        image_url = `${protocol}://${host}/uploads/${req.file.filename}`;
-    } else if (req.body.image_url) {
-        // Fallback if image_url is sent directly (e.g. from existing URL)
-        image_url = req.body.image_url;
+        const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+
+        if (req.file.mimetype.startsWith('video/')) {
+            video_url = fileUrl;
+        } else {
+            image_url = fileUrl;
+        }
+    } else {
+        if (req.body.image_url) image_url = req.body.image_url;
+        if (req.body.video_url) video_url = req.body.video_url;
     }
 
-    if (!content && !image_url) {
-        return res.status(400).json({ message: 'Content or Image is required' });
+    if (!content && !image_url && !video_url) {
+        return res.status(400).json({ message: 'Content or Media is required' });
     }
 
     try {
@@ -59,6 +64,7 @@ const createPost = async (req, res) => {
             user: req.user.id,
             content: content || "",
             image_url,
+            video_url,
         });
 
         const populatedPost = await Post.findById(post._id).populate('user', 'username display_name avatar_url');

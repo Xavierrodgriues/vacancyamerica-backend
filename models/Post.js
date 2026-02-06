@@ -13,6 +13,10 @@ const postSchema = mongoose.Schema({
     image_url: {
         type: String,
         default: null
+    },
+    video_url: {
+        type: String,
+        default: null
     }
 }, {
     timestamps: true
