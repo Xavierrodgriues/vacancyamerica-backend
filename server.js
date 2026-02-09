@@ -23,6 +23,11 @@ app.use('/api/friends', require('./routes/friendRoutes'));
 app.use('/api/admin/auth', require('./admin/routes/adminAuthRoutes'));
 app.use('/api/admin/posts', require('./admin/routes/adminPostRoutes'));
 
+// Super Admin routes
+app.use('/api/superadmin/auth', require('./admin/routes/superAdminAuthRoutes'));
+app.use('/api/superadmin/notifications', require('./admin/routes/notificationRoutes'));
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+

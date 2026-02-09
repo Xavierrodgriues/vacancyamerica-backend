@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const adminSchema = mongoose.Schema({
+const superAdminSchema = mongoose.Schema({
     username: {
         type: String,
         required: [true, 'Username is required'],
@@ -23,7 +23,7 @@ const adminSchema = mongoose.Schema({
         type: String,
         required: [true, 'Password is required'],
         minlength: [8, 'Password must be at least 8 characters'],
-        select: false // Don't include password in queries by default
+        select: false
     },
     display_name: {
         type: String,
@@ -35,34 +35,9 @@ const adminSchema = mongoose.Schema({
         type: String,
         default: null
     },
-    role: {
-        type: String,
-        enum: ['admin', 'super_admin'],
-        default: 'admin'
-    },
     isActive: {
         type: Boolean,
         default: true
-    },
-    // Admin approval status
-    status: {
-        type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: 'pending',
-        index: true
-    },
-    approvedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'SuperAdmin',
-        default: null
-    },
-    approvedAt: {
-        type: Date,
-        default: null
-    },
-    rejectionReason: {
-        type: String,
-        default: null
     },
     lastLogin: {
         type: Date,
@@ -80,34 +55,33 @@ const adminSchema = mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster queries
-adminSchema.index({ email: 1 });
-adminSchema.index({ username: 1 });
+// Indexes
+superAdminSchema.index({ email: 1 });
+superAdminSchema.index({ username: 1 });
 
 // Check if account is locked
-adminSchema.virtual('isLocked').get(function () {
+superAdminSchema.virtual('isLocked').get(function () {
     return !!(this.lockUntil && this.lockUntil > Date.now());
 });
 
 // Pre-save middleware to hash password
-adminSchema.pre('save', async function (next) {
+superAdminSchema.pre('save', async function (next) {
     if (!this.isModified('password')) {
         return next();
     }
 
-    const salt = await bcrypt.genSalt(12); // Higher salt rounds for admin security
+    const salt = await bcrypt.genSalt(12);
     this.password = await bcrypt.hash(this.password, salt);
     next();
 });
 
 // Method to compare passwords
-adminSchema.methods.matchPassword = async function (enteredPassword) {
+superAdminSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
 // Method to increment login attempts
-adminSchema.methods.incLoginAttempts = async function () {
-    // Reset if lock has expired
+superAdminSchema.methods.incLoginAttempts = async function () {
     if (this.lockUntil && this.lockUntil < Date.now()) {
         return this.updateOne({
             $set: { loginAttempts: 1 },
@@ -117,7 +91,6 @@ adminSchema.methods.incLoginAttempts = async function () {
 
     const updates = { $inc: { loginAttempts: 1 } };
 
-    // Lock account after 5 failed attempts for 2 hours
     if (this.loginAttempts + 1 >= 5) {
         updates.$set = { lockUntil: Date.now() + 2 * 60 * 60 * 1000 };
     }
@@ -125,4 +98,4 @@ adminSchema.methods.incLoginAttempts = async function () {
     return this.updateOne(updates);
 };
 
-module.exports = mongoose.model('Admin', adminSchema);
+module.exports = mongoose.model('SuperAdmin', superAdminSchema);
