@@ -19,6 +19,10 @@ app.use('/api/posts', require('./routes/postRoutes'));
 app.use('/api/comments', require('./routes/commentRoutes'));
 app.use('/api/friends', require('./routes/friendRoutes'));
 
+// Admin routes
+app.use('/api/admin/auth', require('./admin/routes/adminAuthRoutes'));
+app.use('/api/admin/posts', require('./admin/routes/adminPostRoutes'));
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));

@@ -1,12 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { getPosts, createPost, getUserPosts, deletePost } = require('../controllers/postController');
-const { protect } = require('../middleware/authMiddleware');
-const upload = require('../middleware/uploadMiddleware');
+const { getPosts, getUserPosts } = require('../controllers/postController');
 
+// Users can only view posts (create/delete moved to admin)
 router.get('/', getPosts);
-router.post('/', protect, upload.single('image'), createPost);
 router.get('/user/:id', getUserPosts);
-router.delete('/:id', protect, deletePost);
 
 module.exports = router;
