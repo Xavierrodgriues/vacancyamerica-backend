@@ -40,6 +40,11 @@ const adminSchema = mongoose.Schema({
         enum: ['admin', 'super_admin'],
         default: 'admin'
     },
+    admin_level: {
+        type: Number,
+        enum: [0, 1, 2],
+        default: 0
+    },
     isActive: {
         type: Boolean,
         default: true

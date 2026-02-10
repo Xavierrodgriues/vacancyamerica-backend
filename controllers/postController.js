@@ -6,7 +6,7 @@ const User = require('../models/User');
 // @access  Public
 const getPosts = async (req, res) => {
     try {
-        const posts = await Post.find()
+        const posts = await Post.find({ status: 'published' })
             .populate('user', 'username display_name avatar_url')
             .sort({ createdAt: -1 });
 
@@ -22,7 +22,7 @@ const getPosts = async (req, res) => {
 // @access  Public
 const getUserPosts = async (req, res) => {
     try {
-        const posts = await Post.find({ user: req.params.id })
+        const posts = await Post.find({ user: req.params.id, status: 'published' })
             .populate('user', 'username display_name avatar_url')
             .sort({ createdAt: -1 });
         res.status(200).json(posts);

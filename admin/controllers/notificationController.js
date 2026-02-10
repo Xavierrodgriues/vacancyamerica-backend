@@ -375,6 +375,51 @@ const updateAdminStatus = async (req, res) => {
     }
 };
 
+
+
+/**
+ * @desc    Update admin level
+ * @route   PUT /api/superadmin/admins/:id/level
+ * @access  Private (super admin)
+ */
+const updateAdminLevel = async (req, res) => {
+    try {
+        const { level } = req.body;
+
+        if (level === undefined || ![0, 1, 2].includes(level)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid level. Must be 0, 1, or 2'
+            });
+        }
+
+        const admin = await Admin.findByIdAndUpdate(
+            req.params.id,
+            { admin_level: level },
+            { new: true }
+        ).select('-password');
+
+        if (!admin) {
+            return res.status(404).json({
+                success: false,
+                message: 'Admin not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `Admin level updated to ${level}`,
+            data: admin
+        });
+    } catch (error) {
+        console.error('Update admin level error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error'
+        });
+    }
+};
+
 module.exports = {
     getNotifications,
     getUnreadCount,
@@ -383,5 +428,6 @@ module.exports = {
     takeAction,
     getPendingAdmins,
     getAllAdmins,
-    updateAdminStatus
+    updateAdminStatus,
+    updateAdminLevel
 };

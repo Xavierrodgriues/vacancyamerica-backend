@@ -89,13 +89,26 @@ const createPost = async (req, res) => {
         // OR we can reference admin directly
 
         // For now, let's use admin's info but mark it as admin post
+        // Check admin level for status
+        let status = 'published';
+        const adminLevel = req.admin.admin_level || 0;
+
+        if (adminLevel === 0) {
+            status = 'pending';
+        } else if (adminLevel === 1) {
+            status = 'pending_trusted';
+        } else if (adminLevel === 2) {
+            status = 'published';
+        }
+
         const post = await Post.create({
             user: req.admin._id,
             userModel: 'Admin',
             content: sanitizedContent,
             image_url,
             video_url,
-            isAdminPost: true
+            isAdminPost: true,
+            status: status
         });
 
         // Populate the created post with admin info
@@ -238,10 +251,116 @@ const getPostStats = async (req, res) => {
     }
 };
 
+
+
+/**
+ * @desc    Get pending posts (Level 0 requests)
+ * @route   GET /api/admin/posts/pending
+ * @access  Private (super_admin)
+ */
+const getPendingPosts = async (req, res) => {
+    try {
+        const posts = await Post.find({ status: 'pending' })
+            .populate('user', 'username display_name avatar_url')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: posts });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * @desc    Get trusted pending posts (Level 1 requests)
+ * @route   GET /api/admin/posts/trusted
+ * @access  Private (super_admin)
+ */
+const getTrustedPendingPosts = async (req, res) => {
+    try {
+        const posts = await Post.find({ status: 'pending_trusted' })
+            .populate('user', 'username display_name avatar_url')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: posts });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * @desc    Get rejected posts
+ * @route   GET /api/admin/posts/rejected
+ * @access  Private (super_admin)
+ */
+const getRejectedPosts = async (req, res) => {
+    try {
+        const posts = await Post.find({ status: 'rejected' })
+            .populate('user', 'username display_name avatar_url')
+            .populate('approvedBy', 'display_name')
+            .sort({ updatedAt: -1 });
+        res.json({ success: true, data: posts });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * @desc    Approve a post
+ * @route   PUT /api/admin/posts/:id/approve
+ * @access  Private (super_admin)
+ */
+const approvePost = async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+
+        post.status = 'published';
+        // Use superAdmin or admin based on which middleware was used
+        const approver = req.superAdmin || req.admin;
+        post.approvedBy = approver ? approver._id : null;
+        post.approvedAt = Date.now();
+        post.rejectionReason = undefined; // Clear previous rejection reason if any
+
+        await post.save();
+        res.json({ success: true, message: 'Post approved', data: post });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * @desc    Reject a post
+ * @route   PUT /api/admin/posts/:id/reject
+ * @access  Private (super_admin)
+ */
+const rejectPost = async (req, res) => {
+    const { reason } = req.body;
+    if (!reason) return res.status(400).json({ success: false, message: 'Rejection reason is required' });
+
+    try {
+        const post = await Post.findById(req.params.id);
+        if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+
+        post.status = 'rejected';
+        // Use superAdmin or admin based on which middleware was used
+        const rejector = req.superAdmin || req.admin;
+        post.approvedBy = rejector ? rejector._id : null; // Track who rejected it
+        post.rejectionReason = reason;
+
+        await post.save();
+        res.json({ success: true, message: 'Post rejected', data: post });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 module.exports = {
     getAllPosts,
     createPost,
     updatePost,
     deletePost,
-    getPostStats
+    getPostStats,
+    getPendingPosts,
+    getTrustedPendingPosts,
+    getRejectedPosts,
+    approvePost,
+    rejectPost
 };

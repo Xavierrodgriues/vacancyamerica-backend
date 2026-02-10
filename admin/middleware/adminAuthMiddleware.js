@@ -97,7 +97,7 @@ const superAdminOnly = (req, res, next) => {
 const adminRateLimit = (() => {
     const requests = new Map();
     const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-    const MAX_REQUESTS = 100; // Max requests per window
+    const MAX_REQUESTS = 1000; // Max requests per window
 
     return (req, res, next) => {
         const ip = req.ip || req.connection.remoteAddress;

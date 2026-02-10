@@ -27,6 +27,24 @@ const postSchema = mongoose.Schema({
     isAdminPost: {
         type: Boolean,
         default: false
+    },
+    status: {
+        type: String,
+        enum: ['published', 'pending', 'pending_trusted', 'rejected'],
+        default: 'published'
+    },
+    approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SuperAdmin',
+        default: null
+    },
+    approvedAt: {
+        type: Date,
+        default: null
+    },
+    rejectionReason: {
+        type: String,
+        default: null
     }
 }, {
     timestamps: true

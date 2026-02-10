@@ -8,7 +8,8 @@ const {
     takeAction,
     getPendingAdmins,
     getAllAdmins,
-    updateAdminStatus
+    updateAdminStatus,
+    updateAdminLevel
 } = require('../controllers/notificationController');
 const { protectSuperAdmin } = require('../middleware/superAdminMiddleware');
 
@@ -26,5 +27,6 @@ router.post('/:id/action', takeAction);
 router.get('/admins', getAllAdmins);
 router.get('/admins/pending', getPendingAdmins);
 router.put('/admins/:id/status', updateAdminStatus);
+router.put('/admins/:id/level', updateAdminLevel);
 
 module.exports = router;
