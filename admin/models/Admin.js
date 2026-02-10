@@ -80,10 +80,6 @@ const adminSchema = mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster queries
-adminSchema.index({ email: 1 });
-adminSchema.index({ username: 1 });
-
 // Check if account is locked
 adminSchema.virtual('isLocked').get(function () {
     return !!(this.lockUntil && this.lockUntil > Date.now());

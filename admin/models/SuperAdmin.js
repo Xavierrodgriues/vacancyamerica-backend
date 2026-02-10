@@ -55,10 +55,6 @@ const superAdminSchema = mongoose.Schema({
     timestamps: true
 });
 
-// Indexes
-superAdminSchema.index({ email: 1 });
-superAdminSchema.index({ username: 1 });
-
 // Check if account is locked
 superAdminSchema.virtual('isLocked').get(function () {
     return !!(this.lockUntil && this.lockUntil > Date.now());
