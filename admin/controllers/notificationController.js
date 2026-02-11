@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const Admin = require('../models/Admin');
+const User = require('../../models/User');
 
 /**
  * @desc    Get all notifications for super admin
@@ -187,6 +188,7 @@ const takeAction = async (req, res) => {
         }
 
         // Update admin status
+        // Check Legacy Admin first
         const adminUpdate = {
             status: action,
             approvedBy: req.superAdmin._id,
@@ -197,16 +199,35 @@ const takeAction = async (req, res) => {
             adminUpdate.rejectionReason = reason;
         }
 
-        const admin = await Admin.findByIdAndUpdate(
+        let admin = await Admin.findByIdAndUpdate(
             adminId,
             adminUpdate,
             { new: true }
         );
 
+        // If not found in Legacy Admin, check User collection for unified admin
+        if (!admin) {
+            const userUpdate = {
+                admin_status: action,
+                admin_approved_by: req.superAdmin._id,
+                admin_approved_at: new Date()
+            };
+
+            if (action === 'rejected' && reason) {
+                userUpdate.admin_rejection_reason = reason;
+            }
+
+            admin = await User.findByIdAndUpdate(
+                adminId,
+                userUpdate,
+                { new: true }
+            );
+        }
+
         if (!admin) {
             return res.status(404).json({
                 success: false,
-                message: 'Admin not found'
+                message: 'Admin/User not found'
             });
         }
 
@@ -238,7 +259,7 @@ const takeAction = async (req, res) => {
                     _id: admin._id,
                     username: admin.username,
                     email: admin.email,
-                    status: admin.status
+                    status: admin.status || admin.admin_status
                 },
                 notification
             }
@@ -259,9 +280,31 @@ const takeAction = async (req, res) => {
  */
 const getPendingAdmins = async (req, res) => {
     try {
-        const admins = await Admin.find({ status: 'pending' })
+        // Fetch from Legacy Admin
+        const legacyPending = await Admin.find({ status: 'pending' })
             .select('-password')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Fetch from User (Unified Admin)
+        const userPending = await User.find({ isAdmin: true, admin_status: 'pending' })
+            .select('-password')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Normalize User objects to match Admin interface for frontend
+        const normalizedUserPending = userPending.map(user => ({
+            ...user,
+            status: user.admin_status,
+            role: 'admin',
+            admin_level: user.admin_level || 0,
+            isUserAdmin: true
+        }));
+
+        // Merge and sort by creation date (newest first)
+        const admins = [...legacyPending, ...normalizedUserPending].sort((a, b) => {
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
 
         res.json({
             success: true,
@@ -284,16 +327,43 @@ const getPendingAdmins = async (req, res) => {
 const getAllAdmins = async (req, res) => {
     try {
         const status = req.query.status;
-        const query = {};
+        const legacyQuery = {};
+        const userQuery = { isAdmin: true };
 
         if (status) {
-            query.status = status;
+            legacyQuery.status = status;
+            userQuery.admin_status = status;
         }
 
-        const admins = await Admin.find(query)
+        // Fetch from Legacy Admin
+        const legacyAdmins = await Admin.find(legacyQuery)
             .select('-password')
             .populate('approvedBy', 'username display_name')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Fetch from User (Unified Admin)
+        // Note: populate might need care if approvedBy is ref to SuperAdmin
+        const userAdmins = await User.find(userQuery)
+            .select('-password')
+            .populate('admin_approved_by', 'username display_name')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Normalize User objects
+        const normalizedUserAdmins = userAdmins.map(user => ({
+            ...user,
+            status: user.admin_status,
+            role: 'admin',
+            admin_level: user.admin_level || 0,
+            approvedBy: user.admin_approved_by, // Normalize field name
+            isUserAdmin: true
+        }));
+
+        // Merge and sort
+        const admins = [...legacyAdmins, ...normalizedUserAdmins].sort((a, b) => {
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
 
         res.json({
             success: true,
@@ -324,6 +394,7 @@ const updateAdminStatus = async (req, res) => {
             });
         }
 
+        // Try Legacy Admin
         const updateData = {
             status,
             approvedBy: req.superAdmin._id,
@@ -334,11 +405,38 @@ const updateAdminStatus = async (req, res) => {
             updateData.rejectionReason = reason;
         }
 
-        const admin = await Admin.findByIdAndUpdate(
+        let admin = await Admin.findByIdAndUpdate(
             req.params.id,
             updateData,
             { new: true }
         ).select('-password');
+
+        // If not legacy, try User
+        if (!admin) {
+            const userUpdate = {
+                admin_status: status,
+                admin_approved_by: req.superAdmin._id,
+                admin_approved_at: new Date()
+            };
+
+            if (status === 'rejected' && reason) {
+                userUpdate.admin_rejection_reason = reason;
+            }
+
+            // Ensure we only update if they are an admin candidate
+            admin = await User.findOneAndUpdate(
+                { _id: req.params.id, isAdmin: true },
+                userUpdate,
+                { new: true }
+            ).select('-password');
+
+            if (admin) {
+                // Normalize for response
+                admin = admin.toObject();
+                admin.status = admin.admin_status;
+                admin.isUserAdmin = true;
+            }
+        }
 
         if (!admin) {
             return res.status(404).json({
@@ -375,8 +473,6 @@ const updateAdminStatus = async (req, res) => {
     }
 };
 
-
-
 /**
  * @desc    Update admin level
  * @route   PUT /api/superadmin/admins/:id/level
@@ -393,11 +489,27 @@ const updateAdminLevel = async (req, res) => {
             });
         }
 
-        const admin = await Admin.findByIdAndUpdate(
+        // Try Legacy Admin
+        let admin = await Admin.findByIdAndUpdate(
             req.params.id,
             { admin_level: level },
             { new: true }
         ).select('-password');
+
+        // If not legacy, try User
+        if (!admin) {
+            admin = await User.findOneAndUpdate(
+                { _id: req.params.id, isAdmin: true },
+                { admin_level: level },
+                { new: true }
+            ).select('-password');
+
+            if (admin) {
+                admin = admin.toObject();
+                admin.status = admin.admin_status; // Normalize
+                admin.isUserAdmin = true;
+            }
+        }
 
         if (!admin) {
             return res.status(404).json({

@@ -34,7 +34,35 @@ const userSchema = mongoose.Schema({
     blocked_users: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
-    }]
+    }],
+    // Admin fields
+    isAdmin: {
+        type: Boolean,
+        default: false
+    },
+    admin_level: {
+        type: Number,
+        enum: [0, 1, 2],
+        default: 0
+    },
+    admin_status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending'
+    },
+    admin_approved_by: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'SuperAdmin',
+        default: null
+    },
+    admin_approved_at: {
+        type: Date,
+        default: null
+    },
+    admin_rejection_reason: {
+        type: String,
+        default: null
+    }
 }, {
     timestamps: true
 });

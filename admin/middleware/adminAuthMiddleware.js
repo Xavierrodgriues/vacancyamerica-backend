@@ -26,7 +26,38 @@ const protectAdmin = async (req, res, next) => {
             }
 
             // Get admin from token (excluding password)
-            const admin = await Admin.findById(decoded.id);
+            let admin = await Admin.findById(decoded.id);
+
+            // If not found in Admin collection, check User collection
+            if (!admin) {
+                const User = require('../../models/User'); // Dynamic import to avoid circular dependency if any
+                const user = await User.findById(decoded.id);
+
+                if (user && user.isAdmin) {
+                    // Check admin status for Users
+                    if (user.admin_status === 'pending') {
+                        return res.status(403).json({
+                            success: false,
+                            message: 'Your admin account is pending approval.'
+                        });
+                    }
+                    if (user.admin_status === 'rejected') {
+                        return res.status(403).json({
+                            success: false,
+                            message: 'Your admin account was rejected.'
+                        });
+                    }
+
+                    // Map user to admin structure expected by controllers if needed, 
+                    // or just attach as is. For now, attaching as is but creating a virtual "role" if needed
+                    // The User model doesn't have 'role' field like Admin, but has isAdmin. 
+                    // We might need to normalize this or update controllers.
+                    // For now, let's attach result to req.admin
+                    admin = user;
+                    // Add a helper property to distinguish
+                    admin.isUserAdmin = true;
+                }
+            }
 
             if (!admin) {
                 return res.status(401).json({
@@ -35,8 +66,9 @@ const protectAdmin = async (req, res, next) => {
                 });
             }
 
-            // Check if admin account is active
-            if (!admin.isActive) {
+            // Check if admin account is active (Admin model has isActive, User currently doesn't have specific deactivation for admin)
+            // If it's a legacy admin, check isActive
+            if (!admin.isUserAdmin && !admin.isActive) {
                 return res.status(403).json({
                     success: false,
                     message: 'Admin account is deactivated'
