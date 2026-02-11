@@ -93,6 +93,9 @@ const registerAdmin = async (req, res) => {
                 username: admin.username,
                 email: admin.email,
                 display_name: admin.display_name,
+                avatar_url: admin.avatar_url,
+                role: admin.role,
+                admin_level: admin.admin_level,
                 status: admin.status
             }
         });
@@ -208,6 +211,7 @@ const loginAdmin = async (req, res) => {
                 display_name: admin.display_name,
                 avatar_url: admin.avatar_url,
                 role: admin.role,
+                admin_level: admin.admin_level,
                 status: admin.status,
                 token: generateToken(admin._id)
             }
@@ -239,6 +243,7 @@ const getAdminProfile = async (req, res) => {
                 display_name: admin.display_name,
                 avatar_url: admin.avatar_url,
                 role: admin.role,
+                admin_level: admin.admin_level,
                 status: admin.status,
                 createdAt: admin.createdAt
             }
