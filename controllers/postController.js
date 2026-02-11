@@ -1,5 +1,6 @@
 const Post = require('../models/Post');
 const User = require('../models/User');
+const Admin = require('../admin/models/Admin');
 
 // @desc    Get all posts
 // @route   GET /api/posts
@@ -10,8 +11,29 @@ const getPosts = async (req, res) => {
             .populate('user', 'username display_name avatar_url')
             .sort({ createdAt: -1 });
 
+        // Fix posts where populate failed (user is null) - likely wrong userModel
+        const fixedPosts = await Promise.all(posts.map(async (post) => {
+            const postObj = post.toObject();
+            if (!postObj.user) {
+                // Get the raw post to retrieve the original user ObjectId
+                const rawPost = await Post.findById(post._id).select('user userModel').lean();
+                if (rawPost && rawPost.user) {
+                    // Try the other collection
+                    const otherModel = rawPost.userModel === 'Admin' ? 'User' : 'Admin';
+                    const Model = otherModel === 'User' ? User : Admin;
+                    const foundUser = await Model.findById(rawPost.user).select('username display_name avatar_url').lean();
+                    if (foundUser) {
+                        postObj.user = foundUser;
+                        // Fix the userModel in DB for future queries
+                        await Post.updateOne({ _id: post._id }, { userModel: otherModel });
+                    }
+                }
+            }
+            return postObj;
+        }));
+
         // Transform data to match frontend expectations partially or handle in frontend
-        res.status(200).json(posts);
+        res.status(200).json(fixedPosts);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

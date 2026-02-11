@@ -101,9 +101,12 @@ const createPost = async (req, res) => {
             status = 'published';
         }
 
+        // Determine the correct user model based on whether admin is from User or Admin collection
+        const userModel = req.admin.isUserAdmin ? 'User' : 'Admin';
+
         const post = await Post.create({
             user: req.admin._id,
-            userModel: 'Admin',
+            userModel: userModel,
             content: sanitizedContent,
             image_url,
             video_url,
