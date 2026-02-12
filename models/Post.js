@@ -45,6 +45,11 @@ const postSchema = mongoose.Schema({
     rejectionReason: {
         type: String,
         default: null
+    },
+    likesCount: {
+        type: Number,
+        default: 0,
+        min: 0 // Mongoose validation: never negative
     }
 }, {
     timestamps: true
