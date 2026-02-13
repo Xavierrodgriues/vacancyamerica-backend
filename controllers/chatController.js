@@ -15,6 +15,8 @@ async function areFriends(userId1, userId2) {
 // ─── POST /api/chat/conversations ───────────────────────────────────────────
 // Start or get existing conversation with a friend
 const startConversation = async (req, res) => {
+
+    
     try {
         const { participantId } = req.body;
         const userId = req.user._id;

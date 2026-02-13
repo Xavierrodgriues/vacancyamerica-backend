@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Generate JWT
 const generateToken = (id) => {
@@ -154,6 +157,78 @@ const searchUsers = async (req, res) => {
     }
 };
 
+// @desc    Login/Register with Google
+// @route   POST /api/auth/google
+// @access  Public
+const googleLogin = async (req, res) => {
+    try {
+        const { access_token } = req.body;
+
+        if (!access_token) {
+            return res.status(400).json({ message: 'Google access token is required' });
+        }
+
+        // Fetch user info from Google
+        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${access_token}` }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch user info from Google');
+        }
+
+        const payload = await response.json();
+        const { sub: googleId, email, name, picture } = payload;
+
+        // Check if user already exists by googleId
+        let user = await User.findOne({ googleId });
+
+        if (!user) {
+            // Check if a user with this email already exists (registered via email/password)
+            user = await User.findOne({ email });
+
+            if (user) {
+                // Link the Google account to the existing user
+                user.googleId = googleId;
+                if (!user.avatar_url && picture) {
+                    user.avatar_url = picture;
+                }
+                await user.save();
+            } else {
+                // Create a brand new user
+                // Generate a unique username from the email prefix
+                let baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+                let username = baseUsername;
+                let counter = 1;
+                while (await User.findOne({ username })) {
+                    username = `${baseUsername}${counter}`;
+                    counter++;
+                }
+
+                user = await User.create({
+                    username,
+                    display_name: name || username,
+                    email,
+                    googleId,
+                    avatar_url: picture || null,
+                });
+            }
+        }
+
+        res.json({
+            _id: user.id,
+            username: user.username,
+            email: user.email,
+            token: generateToken(user._id),
+            display_name: user.display_name,
+            avatar_url: user.avatar_url,
+        });
+    } catch (error) {
+        console.error('Google login error:', error);
+        res.status(401).json({ message: 'Invalid Google access token' });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
@@ -161,4 +236,5 @@ module.exports = {
     getUserByUsername,
     updateProfile,
     searchUsers,
+    googleLogin,
 };
