@@ -102,6 +102,23 @@ function setupChatSocket(io) {
             }
         });
 
+        // ─── WebRTC Signaling ───────────────────────────────────────────
+        socket.on("callUser", ({ userToCall, signalData, from, name }) => {
+            io.to(userToCall).emit("callUser", { signal: signalData, from, name });
+        });
+
+        socket.on("answerCall", (data) => {
+            io.to(data.to).emit("callAccepted", data.signal);
+        });
+
+        socket.on("iceCandidate", ({ target, candidate }) => {
+            io.to(target).emit("iceCandidate", candidate);
+        });
+
+        socket.on("endCall", ({ to }) => {
+            io.to(to).emit("endCall");
+        });
+
         // ─── Online status ──────────────────────────────────────────────
         socket.on('disconnect', () => {
             console.log(`[Socket] User disconnected: ${userId}`);
