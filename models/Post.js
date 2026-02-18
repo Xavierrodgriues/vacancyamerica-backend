@@ -14,7 +14,7 @@ const postSchema = mongoose.Schema({
     },
     content: {
         type: String,
-        required: true
+        default: ''
     },
     image_url: {
         type: String,

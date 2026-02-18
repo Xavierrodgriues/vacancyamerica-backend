@@ -16,7 +16,7 @@ const server = http.createServer(app);
 // Setup Socket.io with CORS
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173", "https://vacancyamerica-frontend.vercel.app"],
+        origin: ["http://localhost:5173", "http://localhost:8080", "https://vacancyamerica-frontend.vercel.app"],
         methods: ['GET', 'POST']
     }
 });
@@ -28,11 +28,10 @@ app.set('io', io);
 setupChatSocket(io);
 
 app.use(cors({
-    origin: ["http://localhost:5173", "https://vacancyamerica-frontend.vercel.app"],
+    origin: ["http://localhost:5173", "http://localhost:8080", "https://vacancyamerica-frontend.vercel.app"],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use('/uploads', express.static('uploads'));
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/posts', require('./routes/postRoutes'));

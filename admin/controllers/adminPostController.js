@@ -1,10 +1,73 @@
 const Post = require('../../models/Post');
 const User = require('../../models/User');
+const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia } = require('../../config/r2');
+const path = require('path');
+const crypto = require('crypto');
 
 // Input sanitization helper
 const sanitizeInput = (input) => {
     if (typeof input !== 'string') return input;
     return input.trim().replace(/[<>]/g, '');
+};
+
+/**
+ * Convert a readable stream to a Buffer (multer v2 compat)
+ */
+const streamToBuffer = (stream) => {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', (chunk) => chunks.push(chunk));
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+        stream.on('error', reject);
+    });
+};
+
+/**
+ * Upload a file to Cloudflare R2
+ * Returns the R2 object key (NOT a public URL)
+ * @param {object} file - multer file object (req.file)
+ * @returns {Promise<string>} R2 object key
+ */
+const uploadToR2 = async (file) => {
+    const ext = path.extname(file.originalname);
+    const key = `posts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
+    // Get file body — multer v2 may use stream instead of buffer
+    let body = file.buffer;
+    if (!body && file.stream) {
+        body = await streamToBuffer(file.stream);
+    }
+    if (!body) {
+        throw new Error('No file buffer or stream available');
+    }
+
+    await s3Client.send(new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: key,
+        Body: body,
+        ContentType: file.mimetype,
+    }));
+
+    console.log(`[R2] Uploaded: ${key}`);
+    return key;
+};
+
+/**
+ * Delete a file from Cloudflare R2 by its key
+ * @param {string} key - The R2 object key
+ */
+const deleteFromR2 = async (key) => {
+    if (!key) return;
+    try {
+        await s3Client.send(new DeleteObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: key,
+        }));
+        console.log(`[R2] Deleted: ${key}`);
+    } catch (err) {
+        console.error('[R2] Delete error:', err.message);
+    }
 };
 
 /**
@@ -28,9 +91,12 @@ const getAllPosts = async (req, res) => {
             Post.countDocuments()
         ]);
 
+        // Sign R2 media URLs
+        const signedPosts = await signPostMediaUrls(posts);
+
         res.json({
             success: true,
-            data: posts,
+            data: signedPosts,
             pagination: {
                 currentPage: page,
                 totalPages: Math.ceil(total / limit),
@@ -58,16 +124,14 @@ const createPost = async (req, res) => {
         let image_url = null;
         let video_url = null;
 
-        // Handle file upload
+        // Handle file upload to R2 — store the key, not a URL
         if (req.file) {
-            const protocol = req.protocol;
-            const host = req.get('host');
-            const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+            const key = await uploadToR2(req.file);
 
             if (req.file.mimetype.startsWith('video/')) {
-                video_url = fileUrl;
+                video_url = key;
             } else {
-                image_url = fileUrl;
+                image_url = key;
             }
         } else {
             if (req.body.image_url) image_url = sanitizeInput(req.body.image_url);
@@ -84,11 +148,6 @@ const createPost = async (req, res) => {
             });
         }
 
-        // Create post - use admin's ID as the user
-        // First, we need to find or create a system user for admin posts
-        // OR we can reference admin directly
-
-        // For now, let's use admin's info but mark it as admin post
         // Check admin level for status
         let status = 'published';
         const adminLevel = req.admin.admin_level || 0;
@@ -101,7 +160,6 @@ const createPost = async (req, res) => {
             status = 'published';
         }
 
-        // Determine the correct user model based on whether admin is from User or Admin collection
         const userModel = req.admin.isUserAdmin ? 'User' : 'Admin';
 
         const post = await Post.create({
@@ -114,12 +172,14 @@ const createPost = async (req, res) => {
             status: status
         });
 
-        // Populate the created post with admin info
         const populatedPost = await Post.findById(post._id).populate('user', 'username display_name avatar_url');
+
+        // Sign the media URLs before returning
+        const signedPost = await signSinglePostMedia(populatedPost);
 
         res.status(201).json({
             success: true,
-            data: populatedPost
+            data: signedPost
         });
     } catch (error) {
         console.error('Admin create post error:', error);
@@ -149,22 +209,23 @@ const updatePost = async (req, res) => {
             });
         }
 
-        // Update fields
         if (content !== undefined) {
             post.content = sanitizeInput(content);
         }
 
-        // Handle media updates
+        // Handle media updates — upload new file to R2
         if (req.file) {
-            const protocol = req.protocol;
-            const host = req.get('host');
-            const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+            // Delete old media from R2
+            await deleteFromR2(post.image_url);
+            await deleteFromR2(post.video_url);
+
+            const key = await uploadToR2(req.file);
 
             if (req.file.mimetype.startsWith('video/')) {
-                post.video_url = fileUrl;
+                post.video_url = key;
                 post.image_url = null;
             } else {
-                post.image_url = fileUrl;
+                post.image_url = key;
                 post.video_url = null;
             }
         }
@@ -172,10 +233,11 @@ const updatePost = async (req, res) => {
         await post.save();
 
         const updatedPost = await Post.findById(post._id).populate('user', 'username display_name avatar_url');
+        const signedPost = await signSinglePostMedia(updatedPost);
 
         res.json({
             success: true,
-            data: updatedPost
+            data: signedPost
         });
     } catch (error) {
         console.error('Admin update post error:', error);
@@ -203,6 +265,10 @@ const deletePost = async (req, res) => {
                 message: 'Post not found'
             });
         }
+
+        // Delete media from R2
+        await deleteFromR2(post.image_url);
+        await deleteFromR2(post.video_url);
 
         await post.deleteOne();
 
@@ -239,11 +305,7 @@ const getPostStats = async (req, res) => {
 
         res.json({
             success: true,
-            data: {
-                totalPosts,
-                todayPosts,
-                weeklyPosts
-            }
+            data: { totalPosts, todayPosts, weeklyPosts }
         });
     } catch (error) {
         console.error('Admin post stats error:', error);
@@ -254,19 +316,17 @@ const getPostStats = async (req, res) => {
     }
 };
 
-
-
 /**
  * @desc    Get pending posts (Level 0 requests)
- * @route   GET /api/admin/posts/pending
- * @access  Private (super_admin)
  */
 const getPendingPosts = async (req, res) => {
     try {
         const posts = await Post.find({ status: 'pending' })
             .populate('user', 'username display_name avatar_url')
-            .sort({ createdAt: -1 });
-        res.json({ success: true, data: posts });
+            .sort({ createdAt: -1 })
+            .lean();
+        const signedPosts = await signPostMediaUrls(posts);
+        res.json({ success: true, data: signedPosts });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -274,15 +334,15 @@ const getPendingPosts = async (req, res) => {
 
 /**
  * @desc    Get trusted pending posts (Level 1 requests)
- * @route   GET /api/admin/posts/trusted
- * @access  Private (super_admin)
  */
 const getTrustedPendingPosts = async (req, res) => {
     try {
         const posts = await Post.find({ status: 'pending_trusted' })
             .populate('user', 'username display_name avatar_url')
-            .sort({ createdAt: -1 });
-        res.json({ success: true, data: posts });
+            .sort({ createdAt: -1 })
+            .lean();
+        const signedPosts = await signPostMediaUrls(posts);
+        res.json({ success: true, data: signedPosts });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -290,16 +350,16 @@ const getTrustedPendingPosts = async (req, res) => {
 
 /**
  * @desc    Get rejected posts
- * @route   GET /api/admin/posts/rejected
- * @access  Private (super_admin)
  */
 const getRejectedPosts = async (req, res) => {
     try {
         const posts = await Post.find({ status: 'rejected' })
             .populate('user', 'username display_name avatar_url')
             .populate('approvedBy', 'display_name')
-            .sort({ updatedAt: -1 });
-        res.json({ success: true, data: posts });
+            .sort({ updatedAt: -1 })
+            .lean();
+        const signedPosts = await signPostMediaUrls(posts);
+        res.json({ success: true, data: signedPosts });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -307,8 +367,6 @@ const getRejectedPosts = async (req, res) => {
 
 /**
  * @desc    Approve a post
- * @route   PUT /api/admin/posts/:id/approve
- * @access  Private (super_admin)
  */
 const approvePost = async (req, res) => {
     try {
@@ -316,14 +374,14 @@ const approvePost = async (req, res) => {
         if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
         post.status = 'published';
-        // Use superAdmin or admin based on which middleware was used
         const approver = req.superAdmin || req.admin;
         post.approvedBy = approver ? approver._id : null;
         post.approvedAt = Date.now();
-        post.rejectionReason = undefined; // Clear previous rejection reason if any
+        post.rejectionReason = undefined;
 
         await post.save();
-        res.json({ success: true, message: 'Post approved', data: post });
+        const signedPost = await signSinglePostMedia(post);
+        res.json({ success: true, message: 'Post approved', data: signedPost });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -331,8 +389,6 @@ const approvePost = async (req, res) => {
 
 /**
  * @desc    Reject a post
- * @route   PUT /api/admin/posts/:id/reject
- * @access  Private (super_admin)
  */
 const rejectPost = async (req, res) => {
     const { reason } = req.body;
@@ -343,13 +399,13 @@ const rejectPost = async (req, res) => {
         if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
         post.status = 'rejected';
-        // Use superAdmin or admin based on which middleware was used
         const rejector = req.superAdmin || req.admin;
-        post.approvedBy = rejector ? rejector._id : null; // Track who rejected it
+        post.approvedBy = rejector ? rejector._id : null;
         post.rejectionReason = reason;
 
         await post.save();
-        res.json({ success: true, message: 'Post rejected', data: post });
+        const signedPost = await signSinglePostMedia(post);
+        res.json({ success: true, message: 'Post rejected', data: signedPost });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

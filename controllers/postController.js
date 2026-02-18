@@ -2,6 +2,10 @@ const Post = require('../models/Post');
 const Like = require('../models/Like');
 const User = require('../models/User');
 const Admin = require('../admin/models/Admin');
+const { PutObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia } = require('../config/r2');
+const path = require('path');
+const crypto = require('crypto');
 
 // ─── Helper: batch lookup which posts the current user has liked ────────────
 async function getLikedPostIds(userId, postIds) {
@@ -56,8 +60,11 @@ const getPosts = async (req, res) => {
         const userId = req.user?._id;
         const postIds = fixedPosts.map(p => p._id);
         const likedSet = await getLikedPostIds(userId, postIds);
+        const withLikes = attachLikeInfo(fixedPosts, likedSet);
 
-        res.status(200).json(attachLikeInfo(fixedPosts, likedSet));
+        // Sign R2 media URLs
+        const signedPosts = await signPostMediaUrls(withLikes);
+        res.status(200).json(signedPosts);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -76,8 +83,11 @@ const getUserPosts = async (req, res) => {
         const userId = req.user?._id;
         const postIds = posts.map(p => p._id);
         const likedSet = await getLikedPostIds(userId, postIds);
+        const withLikes = attachLikeInfo(posts, likedSet);
 
-        res.status(200).json(attachLikeInfo(posts, likedSet));
+        // Sign R2 media URLs
+        const signedPosts = await signPostMediaUrls(withLikes);
+        res.status(200).json(signedPosts);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -92,14 +102,28 @@ const createPost = async (req, res) => {
     let video_url = null;
 
     if (req.file) {
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
+        // Upload to R2 — store the key
+        const ext = path.extname(req.file.originalname);
+        const key = `posts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
+        let body = req.file.buffer;
+        if (!body && req.file.stream) {
+            const chunks = [];
+            for await (const chunk of req.file.stream) chunks.push(chunk);
+            body = Buffer.concat(chunks);
+        }
+
+        await s3Client.send(new PutObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: key,
+            Body: body,
+            ContentType: req.file.mimetype,
+        }));
 
         if (req.file.mimetype.startsWith('video/')) {
-            video_url = fileUrl;
+            video_url = key;
         } else {
-            image_url = fileUrl;
+            image_url = key;
         }
     } else {
         if (req.body.image_url) image_url = req.body.image_url;
@@ -119,8 +143,9 @@ const createPost = async (req, res) => {
         });
 
         const populatedPost = await Post.findById(post._id).populate('user', 'username display_name avatar_url');
+        const signedPost = await signSinglePostMedia(populatedPost);
 
-        res.status(201).json(populatedPost);
+        res.status(201).json(signedPost);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
