@@ -2,6 +2,7 @@ const Post = require('../../models/Post');
 const User = require('../../models/User');
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia } = require('../../config/r2');
+const { processImage } = require('../../utils/imageProcessor');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -30,9 +31,6 @@ const streamToBuffer = (stream) => {
  * @returns {Promise<string>} R2 object key
  */
 const uploadToR2 = async (file) => {
-    const ext = path.extname(file.originalname);
-    const key = `posts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
-
     // Get file body — multer v2 may use stream instead of buffer
     let body = file.buffer;
     if (!body && file.stream) {
@@ -42,11 +40,24 @@ const uploadToR2 = async (file) => {
         throw new Error('No file buffer or stream available');
     }
 
+    let contentType = file.mimetype;
+    let ext = path.extname(file.originalname);
+
+    // Process images through sharp (resize, compress, convert to WebP)
+    if (!file.mimetype.startsWith('video/')) {
+        const processed = await processImage(body, file.mimetype);
+        body = processed.buffer;
+        contentType = processed.mimetype;
+        ext = processed.ext;
+    }
+
+    const key = `posts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
     await s3Client.send(new PutObjectCommand({
         Bucket: R2_BUCKET,
         Key: key,
         Body: body,
-        ContentType: file.mimetype,
+        ContentType: contentType,
     }));
 
     console.log(`[R2] Uploaded: ${key}`);

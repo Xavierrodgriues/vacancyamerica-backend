@@ -14,7 +14,7 @@ const {
 } = require('../controllers/adminPostController');
 const { protectAdmin, adminRateLimit } = require('../middleware/adminAuthMiddleware');
 const { protectSuperAdmin } = require('../middleware/superAdminMiddleware');
-const upload = require('../../middleware/uploadMiddleware');
+const uploadWithSizeCheck = require('../../middleware/uploadMiddleware');
 
 // Apply rate limiting to all routes
 router.use(adminRateLimit);
@@ -30,8 +30,8 @@ router.get('/rejected', protectSuperAdmin, getRejectedPosts);
 router.put('/:id/approve', protectSuperAdmin, approvePost);
 router.put('/:id/reject', protectSuperAdmin, rejectPost);
 
-router.post('/', protectAdmin, upload.single('media'), createPost);
-router.put('/:id', protectAdmin, upload.single('media'), updatePost);
+router.post('/', protectAdmin, uploadWithSizeCheck('media'), createPost);
+router.put('/:id', protectAdmin, uploadWithSizeCheck('media'), updatePost);
 router.delete('/:id', protectAdmin, deletePost);
 
 module.exports = router;

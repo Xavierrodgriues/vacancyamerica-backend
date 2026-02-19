@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Admin = require('../admin/models/Admin');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia } = require('../config/r2');
+const { processImage } = require('../utils/imageProcessor');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -102,10 +103,6 @@ const createPost = async (req, res) => {
     let video_url = null;
 
     if (req.file) {
-        // Upload to R2 — store the key
-        const ext = path.extname(req.file.originalname);
-        const key = `posts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
-
         let body = req.file.buffer;
         if (!body && req.file.stream) {
             const chunks = [];
@@ -113,11 +110,24 @@ const createPost = async (req, res) => {
             body = Buffer.concat(chunks);
         }
 
+        let contentType = req.file.mimetype;
+        let ext = path.extname(req.file.originalname);
+
+        // Process images through sharp (resize, compress, convert to WebP)
+        if (!req.file.mimetype.startsWith('video/')) {
+            const processed = await processImage(body, req.file.mimetype);
+            body = processed.buffer;
+            contentType = processed.mimetype;
+            ext = processed.ext;
+        }
+
+        const key = `posts/${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
         await s3Client.send(new PutObjectCommand({
             Bucket: R2_BUCKET,
             Key: key,
             Body: body,
-            ContentType: req.file.mimetype,
+            ContentType: contentType,
         }));
 
         if (req.file.mimetype.startsWith('video/')) {
