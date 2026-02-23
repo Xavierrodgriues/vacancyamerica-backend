@@ -33,6 +33,19 @@ const userSchema = mongoose.Schema({
         type: String,
         default: null
     },
+    phone_number: {
+        type: String,
+        default: null,
+        trim: true,
+        maxlength: 15,
+        validate: {
+            validator: function (v) {
+                if (!v) return true; // optional field
+                return /^\d{10,15}$/.test(v);
+            },
+            message: 'Phone number must be 10-15 digits only'
+        }
+    },
     friends: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'

@@ -10,11 +10,14 @@ const generateToken = (id) => {
     });
 };
 
-// Input sanitization helper
+// Input sanitization helper — strip HTML/script tags and dangerous chars
 const sanitizeInput = (input) => {
     if (typeof input !== 'string') return input;
-    return input.trim().replace(/[<>]/g, '');
+    return input.trim().replace(/<[^>]*>/g, '').replace(/[<>"'`;()]/g, '');
 };
+
+// Validate phone: digits only, 10-15 chars
+const isValidPhone = (phone) => /^\d{10,15}$/.test(phone);
 
 /**
  * @desc    Register new admin (requires super admin approval)
@@ -25,7 +28,7 @@ const User = require('../../models/User');
 
 const registerAdmin = async (req, res) => {
     try {
-        const { username, email, password, display_name } = req.body;
+        const { username, email, password, display_name, phone_number } = req.body;
 
         // Validate required fields
         if (!username || !email || !password || !display_name) {
@@ -39,6 +42,15 @@ const registerAdmin = async (req, res) => {
         const normalizedEmail = sanitizeInput(email).toLowerCase();
         const normalizedUsername = sanitizeInput(username);
         const sanitizedDisplayName = sanitizeInput(display_name);
+        const cleanPhone = phone_number ? sanitizeInput(phone_number).replace(/\D/g, '') : null;
+
+        // Validate phone if provided
+        if (cleanPhone && !isValidPhone(cleanPhone)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Phone number must be 10-15 digits'
+            });
+        }
 
         // Check if admin already exists in Legacy Admin collection
         const existingLegacyAdmin = await Admin.findOne({
@@ -101,6 +113,7 @@ const registerAdmin = async (req, res) => {
                 email: normalizedEmail,
                 display_name: sanitizedDisplayName,
                 password: hashedPassword,
+                phone_number: cleanPhone,
                 isAdmin: true,
                 admin_status: 'pending',
                 admin_level: 0

@@ -5,6 +5,15 @@ const User = require('../models/User');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// Sanitize user input — strip HTML/script tags and trim
+const sanitizeInput = (input) => {
+    if (typeof input !== 'string') return input;
+    return input.trim().replace(/<[^>]*>/g, '').replace(/[<>"'`;()]/g, '');
+};
+
+// Validate phone: digits only, 10-15 chars
+const isValidPhone = (phone) => /^\d{10,15}$/.test(phone);
+
 // Generate JWT
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -16,15 +25,26 @@ const generateToken = (id) => {
 // @route   POST /api/auth/signup
 // @access  Public
 const registerUser = async (req, res) => {
-    const { username, email, password, display_name } = req.body;
+    const { username, email, password, display_name, phone_number } = req.body;
 
     if (!username || !email || !password || !display_name) {
         return res.status(400).json({ message: 'Please add all fields' });
     }
 
+    // Sanitize all text inputs
+    const cleanUsername = sanitizeInput(username);
+    const cleanEmail = sanitizeInput(email).toLowerCase();
+    const cleanDisplayName = sanitizeInput(display_name);
+    const cleanPhone = phone_number ? sanitizeInput(phone_number).replace(/\D/g, '') : null;
+
+    // Validate phone if provided
+    if (cleanPhone && !isValidPhone(cleanPhone)) {
+        return res.status(400).json({ message: 'Phone number must be 10-15 digits' });
+    }
+
     // Check if user exists
-    const userExists = await User.findOne({ email });
-    const usernameExists = await User.findOne({ username });
+    const userExists = await User.findOne({ email: cleanEmail });
+    const usernameExists = await User.findOne({ username: cleanUsername });
 
     if (userExists || usernameExists) {
         return res.status(400).json({ message: 'User already exists' });
@@ -36,10 +56,11 @@ const registerUser = async (req, res) => {
 
     // Create user
     const user = await User.create({
-        username,
-        display_name,
-        email,
+        username: cleanUsername,
+        display_name: cleanDisplayName,
+        email: cleanEmail,
         password: hashedPassword,
+        phone_number: cleanPhone,
     });
 
     if (user) {
@@ -111,8 +132,15 @@ const updateProfile = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        user.display_name = req.body.display_name || user.display_name;
-        user.bio = req.body.bio || user.bio;
+        user.display_name = req.body.display_name ? sanitizeInput(req.body.display_name) : user.display_name;
+        user.bio = req.body.bio ? sanitizeInput(req.body.bio) : user.bio;
+        if (req.body.phone_number !== undefined) {
+            const cleanPhone = sanitizeInput(req.body.phone_number).replace(/\D/g, '');
+            if (cleanPhone && !isValidPhone(cleanPhone)) {
+                return res.status(400).json({ message: 'Phone number must be 10-15 digits' });
+            }
+            user.phone_number = cleanPhone || null;
+        }
 
         // Handle other fields if necessary
 
