@@ -182,7 +182,7 @@ const sendMessage = async (req, res) => {
     try {
         const userId = req.user._id;
         const { id: conversationId } = req.params;
-        const { text } = req.body;
+        const { text, type = 'text' } = req.body;
 
         if (!text || !text.trim()) {
             return res.status(400).json({ message: 'Message text is required' });
@@ -208,10 +208,10 @@ const sendMessage = async (req, res) => {
             conversationId,
             sender: userId,
             text: encryptedText,
+            type,
             readBy: [userId] // Sender has already "read" it
         });
 
-        // Update conversation's lastMessage (also encrypted)
         await Conversation.findByIdAndUpdate(conversationId, {
             lastMessage: {
                 text: encryptedText,

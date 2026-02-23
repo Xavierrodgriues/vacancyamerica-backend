@@ -98,6 +98,11 @@ const messageSchema = mongoose.Schema({
         type: String,
         required: true
     },
+    type: {
+        type: String,
+        enum: ['text', 'system'],
+        default: 'text'
+    },
     readBy: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
