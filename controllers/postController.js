@@ -35,10 +35,25 @@ function attachLikeInfo(posts, likedSet) {
 // @access  Public
 const getPosts = async (req, res) => {
     try {
-        const posts = await Post.find({ status: 'published' })
+        const limit = parseInt(req.query.limit) || 10;
+        const cursor = req.query.cursor;
+
+        let query = { status: 'published' };
+        if (cursor) {
+            query.createdAt = { $lt: new Date(cursor) };
+        }
+
+        const posts = await Post.find(query)
             .populate('user', 'username display_name avatar_url')
             .sort({ createdAt: -1 })
+            .limit(limit + 1)
             .lean();
+
+        const hasMore = posts.length > limit;
+        if (hasMore) {
+            posts.pop();
+        }
+        const nextCursor = posts.length > 0 ? posts[posts.length - 1].createdAt : null;
 
         // Fix posts where populate failed (user is null) - likely wrong userModel
         const fixedPosts = await Promise.all(posts.map(async (post) => {
@@ -65,7 +80,12 @@ const getPosts = async (req, res) => {
 
         // Sign R2 media URLs
         const signedPosts = await signPostMediaUrls(withLikes);
-        res.status(200).json(signedPosts);
+
+        res.status(200).json({
+            posts: signedPosts,
+            nextCursor,
+            hasMore
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -76,10 +96,25 @@ const getPosts = async (req, res) => {
 // @access  Public
 const getUserPosts = async (req, res) => {
     try {
-        const posts = await Post.find({ user: req.params.id, status: 'published' })
+        const limit = parseInt(req.query.limit) || 10;
+        const cursor = req.query.cursor;
+
+        let query = { user: req.params.id, status: 'published' };
+        if (cursor) {
+            query.createdAt = { $lt: new Date(cursor) };
+        }
+
+        const posts = await Post.find(query)
             .populate('user', 'username display_name avatar_url')
             .sort({ createdAt: -1 })
+            .limit(limit + 1)
             .lean();
+
+        const hasMore = posts.length > limit;
+        if (hasMore) {
+            posts.pop();
+        }
+        const nextCursor = posts.length > 0 ? posts[posts.length - 1].createdAt : null;
 
         const userId = req.user?._id;
         const postIds = posts.map(p => p._id);
@@ -88,7 +123,12 @@ const getUserPosts = async (req, res) => {
 
         // Sign R2 media URLs
         const signedPosts = await signPostMediaUrls(withLikes);
-        res.status(200).json(signedPosts);
+
+        res.status(200).json({
+            posts: signedPosts,
+            nextCursor,
+            hasMore
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
