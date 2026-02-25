@@ -27,4 +27,19 @@ const protect = async (req, res, next) => {
     }
 };
 
-module.exports = { protect };
+const decodeToken = (req, res, next) => {
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+            const token = req.headers.authorization.split(' ')[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+            // Attach the decoded token payload to req.user (contains id, isAdmin, isSuperAdmin, etc.)
+            req.user = decoded;
+        } catch (error) {
+            // Invalid token, silently fail and proceed as guest
+        }
+    }
+    next();
+};
+
+module.exports = { protect, decodeToken };

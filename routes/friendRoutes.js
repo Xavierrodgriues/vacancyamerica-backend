@@ -12,9 +12,18 @@ const {
     getBlockedUsers
 } = require('../controllers/friendController');
 const { protect } = require('../middleware/authMiddleware');
+const rateLimit = require('express-rate-limit');
 
-router.post('/request/:id', protect, sendFriendRequest);
-router.post('/accept/:id', protect, acceptFriendRequest); // :id is requestId
+const followLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 20, // 20 requests per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: 'Too many friend requests, please slow down' }
+});
+
+router.post('/request/:id', protect, followLimiter, sendFriendRequest);
+router.post('/accept/:id', protect, followLimiter, acceptFriendRequest); // :id is requestId
 router.delete('/request/:id', protect, cancelFriendRequest); // :id is requestId
 
 router.delete('/:id', protect, unfriendUser); // :id is friend's userId
