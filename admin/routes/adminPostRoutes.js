@@ -6,6 +6,7 @@ const {
     updatePost,
     deletePost,
     getPostStats,
+    getPostAnalytics,
     getPendingPosts,
     getTrustedPendingPosts,
     getRejectedPosts,
@@ -31,6 +32,7 @@ router.use(adminRateLimit);
 // Post management routes (For regular Admins)
 router.get('/', protectAdmin, getAllPosts);
 router.get('/stats', protectAdmin, getPostStats);
+router.get('/analytics', protectAdmin, getPostAnalytics);
 
 // Super Admin Approval Routes
 router.get('/pending', protectSuperAdmin, getPendingPosts);

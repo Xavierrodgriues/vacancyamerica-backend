@@ -1,5 +1,6 @@
 const Post = require('../../models/Post');
 const User = require('../../models/User');
+const Comment = require('../../models/Comment');
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia } = require('../../config/r2');
 const { processImage } = require('../../utils/imageProcessor');
@@ -422,12 +423,105 @@ const rejectPost = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Get rich analytics for admin overview
+ * @route   GET /api/admin/posts/analytics
+ * @access  Private (admin)
+ */
+const getPostAnalytics = async (req, res) => {
+    try {
+        const now = new Date();
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+        // Run all aggregations in parallel
+        const [
+            statusCounts,
+            likesAgg,
+            totalComments,
+            dailyAgg,
+            topPosts
+        ] = await Promise.all([
+            // Status breakdown
+            Post.aggregate([
+                { $group: { _id: '$status', count: { $sum: 1 } } }
+            ]),
+
+            // Total likes across all posts
+            Post.aggregate([
+                { $group: { _id: null, totalLikes: { $sum: '$likesCount' } } }
+            ]),
+
+            // Total non-deleted comments
+            Comment.countDocuments({ deleted: { $ne: true } }),
+
+            // Posts per day for last 7 days
+            Post.aggregate([
+                { $match: { createdAt: { $gte: sevenDaysAgo } } },
+                {
+                    $group: {
+                        _id: {
+                            $dateToString: { format: '%Y-%m-%d', date: '$createdAt' }
+                        },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]),
+
+            // Top 3 posts by likes
+            Post.find({ status: 'published', likesCount: { $gt: 0 } })
+                .sort({ likesCount: -1 })
+                .limit(3)
+                .select('content image_url likesCount createdAt status')
+                .lean()
+        ]);
+
+        // Build status map
+        const statusMap = {};
+        statusCounts.forEach(s => { statusMap[s._id] = s.count; });
+
+        // Build 7-day chart data (fill missing days with 0)
+        const chartData = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(now);
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            const dayEntry = dailyAgg.find(x => x._id === key);
+            chartData.push({
+                date: key,
+                label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+                count: dayEntry ? dayEntry.count : 0
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                statusBreakdown: {
+                    published: statusMap['published'] || 0,
+                    pending: (statusMap['pending'] || 0) + (statusMap['pending_trusted'] || 0),
+                    rejected: statusMap['rejected'] || 0,
+                    total: Object.values(statusMap).reduce((a, b) => a + b, 0)
+                },
+                totalLikes: likesAgg[0]?.totalLikes || 0,
+                totalComments,
+                chartData,
+                topPosts
+            }
+        });
+    } catch (error) {
+        console.error('Admin analytics error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch analytics' });
+    }
+};
+
 module.exports = {
     getAllPosts,
     createPost,
     updatePost,
     deletePost,
     getPostStats,
+    getPostAnalytics,
     getPendingPosts,
     getTrustedPendingPosts,
     getRejectedPosts,
