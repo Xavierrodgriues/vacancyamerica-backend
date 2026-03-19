@@ -10,18 +10,23 @@ const conversationSchema = mongoose.Schema({
         text: { type: String, default: '' },
         sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         createdAt: { type: Date, default: null }
+    },
+    // Denormalized unread count per participant — avoids countDocuments on every inbox load
+    // Key = userId (string), Value = unread count (number)
+    unreadCounts: {
+        type: Map,
+        of: Number,
+        default: {}
     }
 }, {
     timestamps: true
 });
 
-// Index for fast inbox lookup — find all conversations for a user
-conversationSchema.index({ participants: 1 });
-
 // Index for sorting inbox by most recent activity
 conversationSchema.index({ updatedAt: -1 });
 
-// Ensure unique participant pair (sorted to prevent duplicates)
+// Unique participant pair index — also handles fast inbox lookups (participants: 1)
+// partialFilterExpression ensures only pairs (not single-participant docs) are constrained
 conversationSchema.index(
     { participants: 1 },
     {

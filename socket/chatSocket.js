@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Admin = require('../admin/models/Admin');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 
@@ -124,6 +125,67 @@ function setupChatSocket(io) {
             console.log(`[Socket] User disconnected: ${userId}`);
         });
     });
+
+    // ─── Admin namespace (/admin) ─────────────────────────────────────────────
+    // Separate namespace so admin JWTs (isAdmin: true) are cleanly isolated from
+    // regular user sockets — no user socket can ever join an admin room.
+    const adminNs = io.of('/admin');
+
+    adminNs.use(async (socket, next) => {
+        try {
+            const token = socket.handshake.auth.token;
+            if (!token) return next(new Error('Admin authentication required'));
+
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            if (!decoded.isAdmin) return next(new Error('Admin access required'));
+
+            // Look up admin account
+            const admin = await Admin.findById(decoded.id);
+            if (!admin || !admin.isActive) {
+                return next(new Error('Admin not found or inactive'));
+            }
+
+            socket.adminId = admin._id.toString();
+            socket.admin   = admin;
+            next();
+        } catch (err) {
+            next(new Error('Invalid admin token'));
+        }
+    });
+
+    adminNs.on('connection', (socket) => {
+        const adminId = socket.adminId;
+        console.log(`[AdminSocket] Admin connected: ${adminId}`);
+
+        // Each admin joins their own personal room
+        socket.join(`admin:${adminId}`);
+
+        // ─── Admin marks a conversation as read ─────────────────────────
+        // Clears unreadCounts for ALL participants atomically using $set
+        socket.on('adminMarkRead', async ({ conversationId }) => {
+            try {
+                const conversation = await Conversation.findById(conversationId);
+                if (!conversation) return;
+
+                // Build unset map — zero out every participant's unread count
+                const unsetMap = {};
+                conversation.participants.forEach(pId => {
+                    unsetMap[`unreadCounts.${pId.toString()}`] = 0;
+                });
+
+                await Conversation.findByIdAndUpdate(conversationId, { $set: unsetMap });
+
+                socket.emit('adminMarkReadAck', { conversationId });
+            } catch (err) {
+                console.error('[AdminSocket] adminMarkRead error:', err);
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log(`[AdminSocket] Admin disconnected: ${adminId}`);
+        });
+    });
 }
 
 module.exports = { setupChatSocket };
+

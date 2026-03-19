@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -19,7 +20,35 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-// Setup Socket.io with CORS
+// ─── Redis clients ────────────────────────────────────────────────────────────
+// Three separate ioredis connections:
+//   redisClient  → rate-limit store (shared, general-purpose)
+//   redisPub     → Socket.IO adapter publisher  (dedicated — Redis pub/sub requires it)
+//   redisSub     → Socket.IO adapter subscriber (dedicated — Redis pub/sub requires it)
+//
+// Why dedicated pub/sub connections?
+//   Once a connection enters subscribe mode it can ONLY issue subscribe commands.
+//   Sharing it with the rate-limit store would break both.
+const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+const REDIS_OPTS = { enableOfflineQueue: true, maxRetriesPerRequest: null };
+
+const redisClient = new Redis(REDIS_URL, REDIS_OPTS);   // rate-limit store
+const redisPub    = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io pub
+const redisSub    = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io sub
+
+function logRedis(label, client) {
+    client.on('ready', () => console.log(`[Redis] ${label} ready`));
+    client.on('error', (err) => {
+        if (err.code !== 'ECONNREFUSED') {
+            console.error(`[Redis] ${label} error:`, err.message);
+        }
+    });
+}
+logRedis('rate-limit', redisClient);
+logRedis('socket-pub', redisPub);
+logRedis('socket-sub', redisSub);
+
+// ─── Socket.io setup ──────────────────────────────────────────────────────────
 const io = new Server(server, {
     cors: {
         origin: ["http://localhost:5173", "http://localhost:8080", "https://vacancyamerica-frontend.vercel.app"],
@@ -27,10 +56,20 @@ const io = new Server(server, {
     }
 });
 
+// Attach Redis adapter BEFORE setupChatSocket so ALL namespaces (default + /admin)
+// inherit it — every Node.js instance will publish/receive events via Redis,
+// ensuring real-time sync across horizontally scaled deployments.
+redisPub.on('ready', () => {
+    redisSub.on('ready', () => {
+        io.adapter(createAdapter(redisPub, redisSub));
+        console.log('[Socket.IO] Redis adapter attached — multi-instance sync enabled');
+    });
+});
+
 // Make io accessible in route handlers via req.app.get('io')
 app.set('io', io);
 
-// Setup socket event handlers
+// Setup socket event handlers (must come after adapter is configured)
 setupChatSocket(io);
 
 app.use(cors({
@@ -39,21 +78,6 @@ app.use(cors({
 
 // Trust proxy if we are behind a reverse proxy (e.g. Render, Heroku, Nginx)
 app.set('trust proxy', 1);
-
-// Redis client configuration
-const redisClient = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379', {
-    enableOfflineQueue: true,
-    maxRetriesPerRequest: null,
-});
-redisClient.on('ready', () => {
-    console.log('Redis ready');
-});
-redisClient.on('error', (err) => {
-    // Suppress verbose Redis connection errors if Redis isn't configured locally
-    if (err.code !== 'ECONNREFUSED') {
-        console.error('Redis Client Error:', err);
-    }
-});
 
 // Apply global optional auth middleware first to decode JWT (if present) without blocking guests
 app.use(decodeToken);
@@ -97,6 +121,7 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 // Admin routes
 app.use('/api/admin/auth', require('./admin/routes/adminAuthRoutes'));
 app.use('/api/admin/posts', require('./admin/routes/adminPostRoutes'));
+app.use('/api/admin/chat', require('./admin/routes/adminChatRoutes'));
 
 // Super Admin routes
 app.use('/api/superadmin/auth', require('./admin/routes/superAdminAuthRoutes'));
