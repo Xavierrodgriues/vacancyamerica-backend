@@ -58,6 +58,7 @@ const getAdminMessages = async (req, res) => {
         const { id: conversationId } = req.params;
         const limit = Math.min(60, parseInt(req.query.limit) || 30);
         const before = req.query.before; // cursor: message _id
+        const adminId = req.admin._id;
 
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
@@ -86,6 +87,13 @@ const getAdminMessages = async (req, res) => {
         const decrypted = messages.map(msg => {
             msg.text = Message.decrypt(msg.text);
             return msg;
+        });
+
+        // Zero out admin's unread count in DB every time messages are fetched
+        // (i.e. every time the conversation is opened). More reliable than socket-based
+        // adminMarkRead because it persists across page refreshes.
+        await Conversation.findByIdAndUpdate(conversationId, {
+            $set: { [`unreadCounts.${adminId.toString()}`]: 0 }
         });
 
         res.status(200).json({

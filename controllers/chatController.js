@@ -212,13 +212,22 @@ const sendMessage = async (req, res) => {
             readBy: [userId] // Sender has already "read" it
         });
 
+        // Build unread increments for all participants
+        const unreadInc = {};
+        conversation.participants.forEach(pId => {
+            if (pId.toString() !== userId.toString()) {
+                unreadInc[`unreadCounts.${pId.toString()}`] = 1;
+            }
+        });
+
         await Conversation.findByIdAndUpdate(conversationId, {
-            lastMessage: {
-                text: encryptedText,
-                sender: userId,
-                createdAt: message.createdAt
+            $set: {
+                'lastMessage.text': encryptedText,
+                'lastMessage.sender': userId,
+                'lastMessage.createdAt': message.createdAt,
+                updatedAt: new Date()
             },
-            updatedAt: new Date()
+            $inc: unreadInc
         });
 
         // Populate sender info for the response
@@ -239,6 +248,13 @@ const sendMessage = async (req, res) => {
                     message: populatedMessage,
                     conversationId
                 });
+            });
+
+            // Also notify ALL connected admins via the /admin namespace
+            // so any admin on the dashboard gets real-time alerts
+            io.of('/admin').emit('newMessage', {
+                message: populatedMessage,
+                conversationId
             });
         }
 
