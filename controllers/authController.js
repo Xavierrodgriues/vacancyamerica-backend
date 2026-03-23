@@ -103,7 +103,24 @@ const loginUser = async (req, res) => {
 // @route   GET /api/auth/me
 // @access  Private
 const getMe = async (req, res) => {
-    res.status(200).json(req.user);
+    try {
+        const Post = require('../models/Post');
+        // Count total posts authored by this user
+        const postCount = await Post.countDocuments({ user: req.user.id });
+        
+        // Followers / Following
+        const userObj = req.user.toObject ? req.user.toObject() : req.user;
+        const friendsCount = Array.isArray(userObj.friends) ? userObj.friends.length : 0;
+        
+        res.status(200).json({
+            ...userObj,
+            postCount,
+            followersCount: friendsCount,
+            followingCount: friendsCount // Platform uses mutual connections
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
 };
 
 // @desc    Get user by username
@@ -115,7 +132,18 @@ const getUserByUsername = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        res.status(200).json(user);
+        
+        const Post = require('../models/Post');
+        const postCount = await Post.countDocuments({ user: user._id });
+        const userObj = user.toObject();
+        const friendsCount = Array.isArray(userObj.friends) ? userObj.friends.length : 0;
+        
+        res.status(200).json({
+            ...userObj,
+            postCount,
+            followersCount: friendsCount,
+            followingCount: friendsCount
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
