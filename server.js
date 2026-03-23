@@ -117,6 +117,7 @@ app.use('/api/posts', require('./routes/postRoutes'));
 app.use('/api/comments', require('./routes/commentRoutes'));
 app.use('/api/friends', require('./routes/friendRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/activity', require('./routes/activityRoutes'));
 
 // Admin routes
 app.use('/api/admin/auth', require('./admin/routes/adminAuthRoutes'));

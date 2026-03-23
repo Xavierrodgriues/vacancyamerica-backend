@@ -34,6 +34,26 @@ const createComment = async (req, res) => {
 
         const populatedComment = await Comment.findById(comment._id).populate('user', 'username display_name avatar_url');
 
+        // Scalable Activity Logging & Socket.IO Real-Time Update
+        const Post = require('../models/Post');
+        const post = await Post.findById(postId).select('user');
+        if (post && post.user && post.user.toString() !== req.user.id) {
+            const Activity = require('../models/Activity');
+            const activity = await Activity.create({
+                recipient: post.user,
+                actor: req.user.id,
+                type: 'COMMENT',
+                post: postId,
+                comment: comment._id
+            });
+            const populatedActivity = await Activity.findById(activity._id)
+                .populate('actor', 'username display_name avatar_url')
+                .populate('post', 'content image_url')
+                .populate('comment', 'content');
+                
+            req.app.get('io').to(post.user.toString()).emit('new_activity', populatedActivity);
+        }
+
         res.status(201).json(populatedComment);
     } catch (error) {
         res.status(500).json({ message: error.message });

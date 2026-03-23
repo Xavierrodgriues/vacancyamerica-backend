@@ -46,6 +46,18 @@ const sendFriendRequest = async (req, res) => {
             receiver: receiverId
         });
 
+        // Scalable Activity Logging & Socket.IO Real-Time Update
+        const Activity = require('../models/Activity');
+        const activity = await Activity.create({
+            recipient: receiverId,
+            actor: senderId,
+            type: 'FOLLOW'
+        });
+        const populatedActivity = await Activity.findById(activity._id)
+            .populate('actor', 'username display_name avatar_url');
+            
+        req.app.get('io').to(receiverId.toString()).emit('new_activity', populatedActivity);
+
         res.status(201).json(request);
     } catch (error) {
         res.status(500).json({ message: error.message });

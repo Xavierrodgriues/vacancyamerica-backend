@@ -239,7 +239,7 @@ const toggleLike = async (req, res) => {
         const userId = req.user._id;
 
         // Edge case #3: validate post exists — prevent orphan likes
-        const post = await Post.findById(postId).select('_id likesCount');
+        const post = await Post.findById(postId).select('_id likesCount user');
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
@@ -267,6 +267,22 @@ const toggleLike = async (req, res) => {
         // Not liked yet → create like
         try {
             await Like.create({ post: postId, user: userId });
+            
+            // Scalable Activity Logging & Socket.IO Real-Time Update
+            if (post.user && post.user.toString() !== userId.toString()) {
+                const Activity = require('../models/Activity');
+                const activity = await Activity.create({
+                    recipient: post.user,
+                    actor: userId,
+                    type: 'LIKE',
+                    post: postId
+                });
+                const populatedActivity = await Activity.findById(activity._id)
+                    .populate('actor', 'username display_name avatar_url')
+                    .populate('post', 'content image_url');
+                    
+                req.app.get('io').to(post.user.toString()).emit('new_activity', populatedActivity);
+            }
         } catch (err) {
             // Edge case #4: handle E11000 duplicate key (concurrent double-like)
             if (err.code === 11000) {
