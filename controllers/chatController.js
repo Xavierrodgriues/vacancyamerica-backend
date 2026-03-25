@@ -1,15 +1,37 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const Connection = require('../models/Connection');
 const xss = require('xss');
 
 // ─── Helper: check if two users are mutual friends ──────────────────────────
 async function areFriends(userId1, userId2) {
-    const user = await User.findById(userId1).select('friends blocked_users');
-    if (!user) return false;
-    const isFriend = user.friends.some(f => f.toString() === userId2.toString());
-    const isBlocked = user.blocked_users.some(b => b.toString() === userId2.toString());
-    return isFriend && !isBlocked;
+    // Check both users for block statuses and roles
+    const [user1, user2] = await Promise.all([
+        User.findById(userId1).select('role blocked_users'),
+        User.findById(userId2).select('role blocked_users')
+    ]);
+
+    if (!user1 || !user2) return false;
+
+    const isBlocked1 = user1.blocked_users.some(b => b.toString() === userId2.toString());
+    const isBlocked2 = user2.blocked_users.some(b => b.toString() === userId1.toString());
+    
+    if (isBlocked1 || isBlocked2) return false;
+
+    // Admins bypass the strict friendship check
+    if (user1.role === 'admin' || user2.role === 'admin') return true;
+
+    // Verify mutual friendship via Connection collection
+    const connection = await Connection.findOne({
+        $or: [
+            { userId: userId1, friendId: userId2 },
+            { userId: userId2, friendId: userId1 }
+        ],
+        status: 'accepted'
+    });
+
+    return !!connection;
 }
 
 // ─── POST /api/chat/conversations ───────────────────────────────────────────
