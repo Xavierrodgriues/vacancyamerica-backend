@@ -1,5 +1,6 @@
 const User = require('../models/User');
-const FriendRequest = require('../models/FriendRequest');
+const Connection = require('../models/Connection');
+const Activity = require('../models/Activity');
 
 // @desc    Send a friend request
 // @route   POST /api/friends/request/:id
@@ -18,36 +19,36 @@ const sendFriendRequest = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Check if already friends
         const sender = await User.findById(senderId);
-        if (sender.friends.includes(receiverId)) {
-            return res.status(400).json({ message: 'You are already friends' });
-        }
 
         // Check if blocked
         if (receiver.blocked_users.includes(senderId) || sender.blocked_users.includes(receiverId)) {
             return res.status(400).json({ message: 'Cannot send request' });
         }
 
-        // Check for existing request
-        const existingRequest = await FriendRequest.findOne({
+        // Check for existing connection/request
+        const existingConnection = await Connection.findOne({
             $or: [
-                { sender: senderId, receiver: receiverId },
-                { sender: receiverId, receiver: senderId }
+                { userId: senderId, friendId: receiverId },
+                { userId: receiverId, friendId: senderId }
             ]
         });
 
-        if (existingRequest) {
-            return res.status(400).json({ message: 'Friend request already pending' });
+        if (existingConnection) {
+            if (existingConnection.status === 'accepted') {
+                return res.status(400).json({ message: 'You are already friends' });
+            } else {
+                return res.status(400).json({ message: 'Friend request already pending' });
+            }
         }
 
-        const request = await FriendRequest.create({
-            sender: senderId,
-            receiver: receiverId
+        const request = await Connection.create({
+            userId: senderId,
+            friendId: receiverId,
+            status: 'pending'
         });
 
         // Scalable Activity Logging & Socket.IO Real-Time Update
-        const Activity = require('../models/Activity');
         const activity = await Activity.create({
             recipient: receiverId,
             actor: senderId,
@@ -56,9 +57,29 @@ const sendFriendRequest = async (req, res) => {
         const populatedActivity = await Activity.findById(activity._id)
             .populate('actor', 'username display_name avatar_url');
             
+        // Map fields so the frontend gets what it expects for friend requests
+        const mappedRequest = {
+            _id: request._id,
+            status: request.status,
+            createdAt: request.createdAt,
+            sender: {
+                _id: sender._id,
+                username: sender.username,
+                display_name: sender.display_name,
+                avatar_url: sender.avatar_url
+            },
+            receiver: {
+                _id: receiver._id,
+                username: receiver.username,
+                display_name: receiver.display_name,
+                avatar_url: receiver.avatar_url
+            }
+        };
+
+        // Emit new_activity - frontend will listen to this to invalidate
         req.app.get('io').to(receiverId.toString()).emit('new_activity', populatedActivity);
 
-        res.status(201).json(request);
+        res.status(201).json(mappedRequest);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -70,24 +91,20 @@ const sendFriendRequest = async (req, res) => {
 const acceptFriendRequest = async (req, res) => {
     try {
         const requestId = req.params.id;
-        const userId = req.user.id;
+        const myId = req.user.id;
 
-        const request = await FriendRequest.findById(requestId);
+        const request = await Connection.findById(requestId);
 
-        if (!request) {
-            return res.status(404).json({ message: 'Request not found' });
+        if (!request || request.status !== 'pending') {
+            return res.status(404).json({ message: 'Pending request not found' });
         }
 
-        if (request.receiver.toString() !== userId) {
+        if (request.friendId.toString() !== myId) {
             return res.status(401).json({ message: 'Not authorized' });
         }
 
-        // Add to friends lists
-        await User.findByIdAndUpdate(request.sender, { $addToSet: { friends: request.receiver } });
-        await User.findByIdAndUpdate(request.receiver, { $addToSet: { friends: request.sender } });
-
-        // Delete request
-        await request.deleteOne();
+        request.status = 'accepted';
+        await request.save();
 
         res.status(200).json({ message: 'Friend request accepted' });
     } catch (error) {
@@ -100,23 +117,15 @@ const acceptFriendRequest = async (req, res) => {
 // @access  Private
 const cancelFriendRequest = async (req, res) => {
     try {
-        const requestId = req.params.id; // Can be request ID or user ID depending on context, let's assume request ID for direct action
-        // But for "Cancel Request" from profile, we might only have User ID. 
-        // Let's support verifying by ID.
+        const requestId = req.params.id; 
 
-        let request = await FriendRequest.findById(requestId);
+        let request = await Connection.findById(requestId);
 
-        // If not found by ID, maybe it was passed as USER ID to cancel request sent TO that user?
-        // Let's stick to Request ID for this endpoint to be clean, or check ownership.
-
-        if (!request) {
-            // Try finding by user pair if requestId isn't a valid objectId or not found
-            // Actually, let's keep it simple: Route /api/friends/request/:id expects Request ID.
-            // Frontend should look up the request ID.
-            return res.status(404).json({ message: 'Request not found' });
+        if (!request || request.status !== 'pending') {
+            return res.status(404).json({ message: 'Pending request not found' });
         }
 
-        if (request.sender.toString() !== req.user.id && request.receiver.toString() !== req.user.id) {
+        if (request.userId.toString() !== req.user.id && request.friendId.toString() !== req.user.id) {
             return res.status(401).json({ message: 'Not authorized' });
         }
 
@@ -136,8 +145,13 @@ const unfriendUser = async (req, res) => {
         const friendId = req.params.id;
         const userId = req.user.id;
 
-        await User.findByIdAndUpdate(userId, { $pull: { friends: friendId } });
-        await User.findByIdAndUpdate(friendId, { $pull: { friends: userId } });
+        await Connection.deleteOne({
+            status: 'accepted',
+            $or: [
+                { userId: userId, friendId: friendId },
+                { userId: friendId, friendId: userId }
+            ]
+        });
 
         res.status(200).json({ message: 'Unfriended successfully' });
     } catch (error) {
@@ -156,15 +170,11 @@ const blockUser = async (req, res) => {
         // Add to blocked list
         await User.findByIdAndUpdate(userId, { $addToSet: { blocked_users: blockId } });
 
-        // Remove from friends if exists
-        await User.findByIdAndUpdate(userId, { $pull: { friends: blockId } });
-        await User.findByIdAndUpdate(blockId, { $pull: { friends: userId } });
-
-        // Delete any pending requests
-        await FriendRequest.deleteMany({
+        // Delete any connections (pending or accepted)
+        await Connection.deleteMany({
             $or: [
-                { sender: userId, receiver: blockId },
-                { sender: blockId, receiver: userId }
+                { userId: userId, friendId: blockId },
+                { userId: blockId, friendId: userId }
             ]
         });
 
@@ -190,13 +200,47 @@ const unblockUser = async (req, res) => {
     }
 };
 
-// @desc    Get all friends
+// @desc    Get all friends (Cursor Paginated)
 // @route   GET /api/friends
 // @access  Private
 const getFriends = async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).populate('friends', 'username display_name avatar_url');
-        res.status(200).json(user.friends);
+        const limit = parseInt(req.query.limit) || 20;
+        const cursor = req.query.cursor; // The _id of the last connection
+
+        const query = {
+            $or: [{ userId: req.user.id }, { friendId: req.user.id }],
+            status: 'accepted'
+        };
+
+        if (cursor) {
+            query._id = { $lt: cursor };
+        }
+
+        const connections = await Connection.find(query)
+            .sort({ _id: -1 })
+            .limit(limit)
+            .populate('userId', 'username display_name avatar_url')
+            .populate('friendId', 'username display_name avatar_url')
+            .lean();
+
+        // Format so it returns array of user objects
+        const friends = connections.map(conn => {
+            const isSender = conn.userId._id.toString() === req.user.id;
+            return isSender ? conn.friendId : conn.userId;
+        });
+
+        const nextCursor = connections.length === limit ? connections[connections.length - 1]._id : null;
+
+        // Note: For backwards compatibility, if no pagination params are sent, the frontend might expect a straight array.
+        // However, useInfiniteFriends will expect an object with { friends, nextCursor }.
+        // If it's a paginated request:
+        if (req.query.limit !== undefined) {
+             return res.status(200).json({ friends, nextCursor });
+        } else {
+             // Fallback for parts of the app that haven't been migrated yet
+             return res.status(200).json(friends);
+        }
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -207,13 +251,24 @@ const getFriends = async (req, res) => {
 // @access  Private
 const getFriendRequests = async (req, res) => {
     try {
-        const requests = await FriendRequest.find({
-            $or: [{ sender: req.user.id }, { receiver: req.user.id }]
+        const requests = await Connection.find({
+            $or: [{ userId: req.user.id }, { friendId: req.user.id }],
+            status: 'pending'
         })
-            .populate('sender', 'username display_name avatar_url')
-            .populate('receiver', 'username display_name avatar_url');
+            .populate('userId', 'username display_name avatar_url')
+            .populate('friendId', 'username display_name avatar_url')
+            .lean();
 
-        res.status(200).json(requests);
+        // The frontend expects { _id, sender: {...}, receiver: {...}, status, createdAt }
+        const formattedRequests = requests.map(reqData => ({
+            _id: reqData._id,
+            status: reqData.status,
+            createdAt: reqData.createdAt,
+            sender: reqData.userId,
+            receiver: reqData.friendId
+        }));
+
+        res.status(200).json(formattedRequests);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -231,6 +286,35 @@ const getBlockedUsers = async (req, res) => {
     }
 };
 
+// @desc    Get connection status
+// @route   GET /api/friends/status/:id
+// @access  Private
+const getConnectionStatus = async (req, res) => {
+    try {
+        const friendId = req.params.id;
+        const userId = req.user.id;
+        
+        if (friendId === userId) return res.status(200).json({ status: 'self' });
+
+        const connection = await Connection.findOne({
+            $or: [
+                { userId, friendId },
+                { userId: friendId, friendId: userId }
+            ]
+        });
+
+        if (!connection) return res.status(200).json({ status: 'none' });
+
+        res.status(200).json({ 
+            status: connection.status, 
+            senderId: connection.userId,
+            requestId: connection._id
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     sendFriendRequest,
     acceptFriendRequest,
@@ -240,5 +324,6 @@ module.exports = {
     unblockUser,
     getFriends,
     getFriendRequests,
-    getBlockedUsers
+    getBlockedUsers,
+    getConnectionStatus
 };

@@ -46,10 +46,6 @@ const userSchema = mongoose.Schema({
             message: 'Phone number must be 10-15 digits only'
         }
     },
-    friends: [{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    }],
     blocked_users: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'

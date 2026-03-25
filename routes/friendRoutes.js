@@ -9,7 +9,8 @@ const {
     unblockUser,
     getFriends,
     getFriendRequests,
-    getBlockedUsers
+    getBlockedUsers,
+    getConnectionStatus
 } = require('../controllers/friendController');
 const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
@@ -29,6 +30,7 @@ router.delete('/request/:id', protect, cancelFriendRequest); // :id is requestId
 router.delete('/:id', protect, unfriendUser); // :id is friend's userId
 router.get('/', protect, getFriends);
 router.get('/requests', protect, getFriendRequests);
+router.get('/status/:id', protect, getConnectionStatus);
 
 router.post('/block/:id', protect, blockUser); // :id is userId to block
 router.delete('/block/:id', protect, unblockUser); // :id is userId to unblock

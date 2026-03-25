@@ -109,8 +109,12 @@ const getMe = async (req, res) => {
         const postCount = await Post.countDocuments({ user: req.user.id });
         
         // Followers / Following
+        const Connection = require('../models/Connection');
+        const friendsCount = await Connection.countDocuments({
+            $or: [{ userId: req.user.id }, { friendId: req.user.id }],
+            status: 'accepted'
+        });
         const userObj = req.user.toObject ? req.user.toObject() : req.user;
-        const friendsCount = Array.isArray(userObj.friends) ? userObj.friends.length : 0;
         
         res.status(200).json({
             ...userObj,
@@ -135,8 +139,12 @@ const getUserByUsername = async (req, res) => {
         
         const Post = require('../models/Post');
         const postCount = await Post.countDocuments({ user: user._id });
+        const Connection = require('../models/Connection');
+        const friendsCount = await Connection.countDocuments({
+            $or: [{ userId: user._id }, { friendId: user._id }],
+            status: 'accepted'
+        });
         const userObj = user.toObject();
-        const friendsCount = Array.isArray(userObj.friends) ? userObj.friends.length : 0;
         
         res.status(200).json({
             ...userObj,
