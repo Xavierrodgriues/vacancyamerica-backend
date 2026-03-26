@@ -93,14 +93,36 @@ const getAllPosts = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
 
+        const filter = {};
+        if (req.query.status && req.query.status !== 'all') {
+            if (req.query.status === 'pending') {
+                filter.status = { $in: ['pending', 'pending_trusted'] };
+            } else if (['published', 'rejected'].includes(req.query.status)) {
+                filter.status = req.query.status;
+            }
+        }
+
+        let sortOption = { createdAt: -1 };
+        if (req.query.sort) {
+            switch (req.query.sort) {
+                case 'oldest': sortOption = { createdAt: 1 }; break;
+                case 'most_likes': sortOption = { likesCount: -1 }; break;
+                case 'least_likes': sortOption = { likesCount: 1 }; break;
+                case 'most_comments': sortOption = { commentsCount: -1 }; break;
+                case 'least_comments': sortOption = { commentsCount: 1 }; break;
+                case 'newest':
+                default: sortOption = { createdAt: -1 }; break;
+            }
+        }
+
         const [posts, total] = await Promise.all([
-            Post.find()
+            Post.find(filter)
                 .populate('user', 'username display_name avatar_url')
-                .sort({ createdAt: -1 })
+                .sort(sortOption)
                 .skip(skip)
                 .limit(limit)
                 .lean(),
-            Post.countDocuments()
+            Post.countDocuments(filter)
         ]);
 
         // Sign R2 media URLs

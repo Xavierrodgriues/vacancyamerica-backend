@@ -34,8 +34,11 @@ const createComment = async (req, res) => {
 
         const populatedComment = await Comment.findById(comment._id).populate('user', 'username display_name avatar_url');
 
-        // Scalable Activity Logging & Socket.IO Real-Time Update
+        // Increment commentsCount on Post (atomic)
         const Post = require('../models/Post');
+        await Post.findByIdAndUpdate(postId, { $inc: { commentsCount: 1 } });
+
+        // Scalable Activity Logging & Socket.IO Real-Time Update
         const post = await Post.findById(postId).select('user');
         if (post && post.user && post.user.toString() !== req.user.id) {
             const Activity = require('../models/Activity');
@@ -88,6 +91,13 @@ const deleteComment = async (req, res) => {
         } else {
             // Hard delete
             await comment.deleteOne();
+        }
+
+        // Decrement commentsCount on Post (atomic) ensuring it doesn't go below 0
+        const Post = require('../models/Post');
+        const post = await Post.findById(comment.post_id).select('commentsCount');
+        if (post && post.commentsCount > 0) {
+            await Post.findByIdAndUpdate(comment.post_id, { $inc: { commentsCount: -1 } });
         }
 
         res.status(200).json({ id: req.params.id });

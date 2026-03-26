@@ -49,7 +49,12 @@ const postSchema = mongoose.Schema({
     likesCount: {
         type: Number,
         default: 0,
-        min: 0 // Mongoose validation: never negative
+        min: 0
+    },
+    commentsCount: {
+        type: Number,
+        default: 0,
+        min: 0
     }
 }, {
     timestamps: true
@@ -58,6 +63,9 @@ const postSchema = mongoose.Schema({
 // Index for faster queries
 postSchema.index({ user: 1 });
 postSchema.index({ createdAt: -1 });
+postSchema.index({ status: 1 });
+postSchema.index({ likesCount: -1 });
+postSchema.index({ commentsCount: -1 });
 
 module.exports = mongoose.model('Post', postSchema);
 
