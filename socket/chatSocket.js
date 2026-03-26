@@ -139,10 +139,24 @@ function setupChatSocket(io) {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             if (!decoded.isAdmin) return next(new Error('Admin access required'));
 
-            // Look up admin account
-            const admin = await Admin.findById(decoded.id);
-            if (!admin || !admin.isActive) {
-                return next(new Error('Admin not found or inactive'));
+            // Look up admin account in Legacy Admin
+            let admin = await Admin.findById(decoded.id);
+            let isUnified = false;
+
+            // If not found, check Unified User collection
+            if (!admin) {
+                admin = await User.findById(decoded.id);
+                isUnified = true;
+                
+                // Unified users must have isAdmin flag
+                if (admin && !admin.isAdmin) {
+                    return next(new Error('User does not have admin privileges'));
+                }
+            }
+
+            // Check lock/active status rules depending on model type
+            if (!admin || (isUnified ? admin.isLocked : !admin.isActive)) {
+                return next(new Error('Admin not found, locked, or inactive'));
             }
 
             socket.adminId = admin._id.toString();

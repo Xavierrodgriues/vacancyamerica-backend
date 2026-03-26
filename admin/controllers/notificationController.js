@@ -264,6 +264,16 @@ const takeAction = async (req, res) => {
                 notification
             }
         });
+
+        // Broadcast real-time update using WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            io.of('/admin').to(`admin:${admin._id.toString()}`).emit('admin_privilege_update', {
+                admin_level: admin.admin_level || admin.level || 0,
+                status: admin.status || admin.admin_status,
+                role: admin.role || 'admin'
+            });
+        }
     } catch (error) {
         console.error('Take action error:', error);
         res.status(500).json({
@@ -464,6 +474,16 @@ const updateAdminStatus = async (req, res) => {
             message: `Admin ${status} successfully`,
             data: admin
         });
+
+        // Broadcast real-time update using WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            io.of('/admin').to(`admin:${admin._id.toString()}`).emit('admin_privilege_update', {
+                admin_level: admin.admin_level || admin.level || 0,
+                status: admin.status || admin.admin_status,
+                role: admin.role || 'admin'
+            });
+        }
     } catch (error) {
         console.error('Update admin status error:', error);
         res.status(500).json({
@@ -523,6 +543,16 @@ const updateAdminLevel = async (req, res) => {
             message: `Admin level updated to ${level}`,
             data: admin
         });
+
+        // Broadcast real-time update using WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            io.of('/admin').to(`admin:${admin._id.toString()}`).emit('admin_privilege_update', {
+                admin_level: admin.admin_level || admin.level || 0,
+                status: admin.status || admin.admin_status,
+                role: admin.role || 'admin'
+            });
+        }
     } catch (error) {
         console.error('Update admin level error:', error);
         res.status(500).json({
