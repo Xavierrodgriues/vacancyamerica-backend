@@ -30,11 +30,25 @@ const server = http.createServer(app);
 //   Once a connection enters subscribe mode it can ONLY issue subscribe commands.
 //   Sharing it with the rate-limit store would break both.
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-const REDIS_OPTS = { enableOfflineQueue: true, maxRetriesPerRequest: null };
+const REDIS_OPTS = { 
+    enableOfflineQueue: false, // Prevents hanging if Redis is down
+    maxRetriesPerRequest: 3,
+    connectTimeout: 5000 
+};
 
 const redisClient = new Redis(REDIS_URL, REDIS_OPTS);   // rate-limit store
 const redisPub    = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io pub
 const redisSub    = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io sub
+
+// Track Redis health
+let isRedisConnected = false;
+redisClient.on('connect', () => {
+    isRedisConnected = true;
+    console.log('[Redis] Connected to server');
+});
+redisClient.on('error', () => {
+    isRedisConnected = false;
+});
 
 function logRedis(label, client) {
     client.on('ready', () => console.log(`[Redis] ${label} ready`));
@@ -82,28 +96,26 @@ app.set('trust proxy', 1);
 // Apply global optional auth middleware first to decode JWT (if present) without blocking guests
 app.use(decodeToken);
 
-// Apply global rate limiting
+// Apply global rate limiting with Redis fallback
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: (req) => {
-        // Dynamic limit logic based on role
         if (req.user) {
             if (req.user.isSuperAdmin) return 1000;
             if (req.user.isAdmin) return 500;
-            return 200; // Normal authenticated user
+            return 200;
         }
-        return 500; // Unauthenticated guest fallback (increased for SPA interactions)
+        return 500;
     },
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    store: new RedisStore({
-        sendCommand: (...args) => redisClient.call(...args),
-    }),
+    standardHeaders: true,
+    legacyHeaders: false,
+    // FALLBACK: Use in-memory store if Redis is down
+    store: isRedisConnected 
+        ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) })
+        : undefined, // Default is in-memory
     keyGenerator: (req, res) => {
-        if (req.user && req.user.id) {
-            return `user_${req.user.id}`; // user-based limiting
-        }
-        return `ip_${ipKeyGenerator(req, res)}`; // Fallback to provided IP generator to satisfy IPv6 validation
+        if (req.user && req.user.id) return `user_${req.user.id}`;
+        return `ip_${ipKeyGenerator(req, res)}`;
     },
     message: { message: 'Too many requests, please try again after 15 minutes' },
 });
