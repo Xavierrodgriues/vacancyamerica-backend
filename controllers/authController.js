@@ -293,6 +293,37 @@ const googleLogin = async (req, res) => {
     }
 };
 
+// @desc    Get suggested users
+// @route   GET /api/auth/suggested
+// @access  Private
+const getSuggestedUsers = async (req, res) => {
+    try {
+        const Connection = require('../models/Connection');
+        
+        // Get all connections of the current user to exclude them
+        const connections = await Connection.find({
+            $or: [{ userId: req.user._id }, { friendId: req.user._id }]
+        });
+        
+        // Extract connected IDs
+        const excludedIds = connections.map(c => 
+            c.userId.toString() === req.user.id ? c.friendId : c.userId
+        );
+        // Include the current user
+        excludedIds.push(req.user._id);
+
+        const suggestedUsers = await User.aggregate([
+            { $match: { _id: { $nin: excludedIds } } },
+            { $sample: { size: 5 } },
+            { $project: { _id: 1, username: 1, display_name: 1, avatar_url: 1 } }
+        ]);
+
+        res.status(200).json(suggestedUsers);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
@@ -301,4 +332,5 @@ module.exports = {
     updateProfile,
     searchUsers,
     googleLogin,
+    getSuggestedUsers,
 };

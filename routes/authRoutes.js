@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { registerUser, loginUser, getMe, getUserByUsername, updateProfile, searchUsers, googleLogin } = require('../controllers/authController');
+const { registerUser, loginUser, getMe, getUserByUsername, updateProfile, searchUsers, googleLogin, getSuggestedUsers } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 
@@ -19,6 +19,7 @@ router.get('/me', protect, getMe);
 router.get('/user/:username', getUserByUsername);
 router.put('/profile', protect, updateProfile);
 router.get('/search', searchUsers);
+router.get('/suggested', protect, getSuggestedUsers);
 
 module.exports = router;
 
