@@ -312,9 +312,51 @@ const toggleLike = async (req, res) => {
     }
 };
 
+// @desc    Get a single post by ID
+// @route   GET /api/posts/:id
+// @access  Public (Optional Auth)
+const getPostById = async (req, res) => {
+    try {
+        const post = await Post.findById(req.params.id)
+            .populate('user', 'username display_name avatar_url')
+            .lean();
+
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        // Handle possible missing populate (admin vs user)
+        if (!post.user) {
+            const rawPost = await Post.findById(post._id).select('user userModel').lean();
+            if (rawPost && rawPost.user) {
+                const Model = rawPost.userModel === 'Admin' ? Admin : User;
+                const foundUser = await Model.findById(rawPost.user).select('username display_name avatar_url').lean();
+                if (foundUser) {
+                    post.user = foundUser;
+                }
+            }
+        }
+
+        const userId = req.user?._id;
+        const likedSet = await getLikedPostIds(userId, [post._id]);
+        const withLike = attachLikeInfo([post], likedSet)[0];
+
+        // Sign R2 media URLs
+        const signedPost = await signPostMediaUrls([withLike]);
+
+        res.status(200).json(signedPost[0]);
+    } catch (error) {
+        if (error.kind === 'ObjectId') {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getPosts,
     getUserPosts,
+    getPostById,
     createPost,
     deletePost,
     toggleLike,

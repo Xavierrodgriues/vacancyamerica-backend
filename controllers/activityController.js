@@ -1,5 +1,7 @@
 const Activity = require('../models/Activity');
 
+const { signSinglePostMedia } = require('../config/r2');
+
 // @desc    Get recent activities
 // @route   GET /api/activity
 // @access  Private
@@ -9,9 +11,18 @@ const getActivities = async (req, res) => {
             .populate('actor', 'username display_name avatar_url')
             .populate('post', 'content image_url')
             .sort({ createdAt: -1 })
-            .limit(50); // Scale: Cap to 50 latest items to avoid massive DB lookups
+            .limit(50)
+            .lean(); // Use lean for modifying the result directly
             
-        res.status(200).json(activities);
+        // Sign media URLs for the nested post object if it exists
+        const signedActivities = await Promise.all(activities.map(async (act) => {
+            if (act.post) {
+                act.post = await signSinglePostMedia(act.post);
+            }
+            return act;
+        }));
+
+        res.status(200).json(signedActivities);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

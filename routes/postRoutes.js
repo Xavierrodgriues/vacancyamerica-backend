@@ -1,7 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
-const { getPosts, getUserPosts, toggleLike } = require('../controllers/postController');
+const { getPosts, getUserPosts, getPostById, toggleLike } = require('../controllers/postController');
 const { protect } = require('../middleware/authMiddleware');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -32,6 +32,7 @@ const likeLimiter = rateLimit({
 // Feed routes (public, but optionalAuth for likedByMe)
 router.get('/', optionalAuth, getPosts);
 router.get('/user/:id', optionalAuth, getUserPosts);
+router.get('/:id', optionalAuth, getPostById); // Get single post by ID
 
 // Like toggle (authenticated + rate-limited)
 router.post('/:id/like', protect, likeLimiter, toggleLike);
