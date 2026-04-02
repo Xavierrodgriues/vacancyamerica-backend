@@ -13,7 +13,7 @@ const getActivities = async (req, res) => {
             .sort({ createdAt: -1 })
             .limit(50)
             .lean(); // Use lean for modifying the result directly
-            
+
         // Sign media URLs for the nested post object if it exists
         const signedActivities = await Promise.all(activities.map(async (act) => {
             if (act.post) {
@@ -43,7 +43,37 @@ const markAsRead = async (req, res) => {
     }
 };
 
+// @desc    Delete a specific activity
+// @route   DELETE /api/activity/:id
+// @access  Private
+const deleteActivity = async (req, res) => {
+    try {
+        const activity = await Activity.findOne({ _id: req.params.id, recipient: req.user.id });
+        if (!activity) {
+            return res.status(404).json({ message: 'Activity not found' });
+        }
+        await activity.deleteOne();
+        res.status(200).json({ message: 'Activity deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Clear all activities
+// @route   DELETE /api/activity
+// @access  Private
+const clearAllActivities = async (req, res) => {
+    try {
+        await Activity.deleteMany({ recipient: req.user.id });
+        res.status(200).json({ message: 'All activities cleared successfully' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getActivities,
-    markAsRead
+    markAsRead,
+    deleteActivity,
+    clearAllActivities
 };
