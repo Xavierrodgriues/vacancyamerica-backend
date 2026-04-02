@@ -593,6 +593,45 @@ const getInterestedApplications = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Update status of an interested application
+ * @route   PUT /api/admin/posts/interested-applications/:id/status
+ * @access  Private (admin)
+ */
+const updateInterestedApplicationStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const application = await InterestedApplication.findById(id).populate({
+            path: 'post',
+            select: 'user userModel'
+        });
+
+        if (!application) {
+            return res.status(404).json({ success: false, message: 'Application not found' });
+        }
+
+        // Verify the post belongs to the admin
+        if (application.post.user.toString() !== req.admin._id.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this application' });
+        }
+
+        const validStatuses = ['pending', 'reviewed', 'approved', 'rejected', 'submitted', 'contacted'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
+
+        application.status = status;
+        await application.save();
+
+        res.json({ success: true, message: 'Status updated successfully', data: application });
+    } catch (error) {
+        console.error('Update interested application status error:', error);
+        res.status(500).json({ success: false, message: 'Failed to update application status' });
+    }
+};
+
 module.exports = {
     getAllPosts,
     createPost,
@@ -605,5 +644,6 @@ module.exports = {
     getRejectedPosts,
     approvePost,
     rejectPost,
-    getInterestedApplications
+    getInterestedApplications,
+    updateInterestedApplicationStatus
 };
