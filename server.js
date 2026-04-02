@@ -30,15 +30,15 @@ const server = http.createServer(app);
 //   Once a connection enters subscribe mode it can ONLY issue subscribe commands.
 //   Sharing it with the rate-limit store would break both.
 const REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
-const REDIS_OPTS = { 
+const REDIS_OPTS = {
     enableOfflineQueue: false, // Prevents hanging if Redis is down
     maxRetriesPerRequest: 3,
-    connectTimeout: 5000 
+    connectTimeout: 5000
 };
 
 const redisClient = new Redis(REDIS_URL, REDIS_OPTS);   // rate-limit store
-const redisPub    = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io pub
-const redisSub    = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io sub
+const redisPub = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io pub
+const redisSub = new Redis(REDIS_URL, REDIS_OPTS);   // socket.io sub
 
 // Track Redis health
 let isRedisConnected = false;
@@ -110,7 +110,7 @@ const limiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     // FALLBACK: Use in-memory store if Redis is down
-    store: isRedisConnected 
+    store: isRedisConnected
         ? new RedisStore({ sendCommand: (...args) => redisClient.call(...args) })
         : undefined, // Default is in-memory
     keyGenerator: (req, res) => {

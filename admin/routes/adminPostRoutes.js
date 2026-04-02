@@ -11,7 +11,8 @@ const {
     getTrustedPendingPosts,
     getRejectedPosts,
     approvePost,
-    rejectPost
+    rejectPost,
+    getInterestedApplications
 } = require('../controllers/adminPostController');
 const { protectAdmin, adminRateLimit } = require('../middleware/adminAuthMiddleware');
 const { protectSuperAdmin } = require('../middleware/superAdminMiddleware');
@@ -33,6 +34,7 @@ router.use(adminRateLimit);
 router.get('/', protectAdmin, getAllPosts);
 router.get('/stats', protectAdmin, getPostStats);
 router.get('/analytics', protectAdmin, getPostAnalytics);
+router.get('/interested-applications', protectAdmin, getInterestedApplications);
 
 // Super Admin Approval Routes
 router.get('/pending', protectSuperAdmin, getPendingPosts);

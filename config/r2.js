@@ -66,4 +66,9 @@ const signSinglePostMedia = async (post) => {
     return obj;
 };
 
-module.exports = { s3Client, R2_BUCKET, getPresignedUrl, signPostMediaUrls, signSinglePostMedia };
+const signR2ObjectKey = async (key) => {
+    if (!isR2Key(key)) return key;
+    return getPresignedUrl(key);
+};
+
+module.exports = { s3Client, R2_BUCKET, getPresignedUrl, signR2ObjectKey, signPostMediaUrls, signSinglePostMedia };

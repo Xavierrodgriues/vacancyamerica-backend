@@ -1,8 +1,9 @@
 const Post = require('../../models/Post');
 const User = require('../../models/User');
 const Comment = require('../../models/Comment');
+const InterestedApplication = require('../../models/InterestedApplication');
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia } = require('../../config/r2');
+const { s3Client, R2_BUCKET, signPostMediaUrls, signSinglePostMedia, signR2ObjectKey } = require('../../config/r2');
 const { processImage } = require('../../utils/imageProcessor');
 const path = require('path');
 const crypto = require('crypto');
@@ -537,6 +538,61 @@ const getPostAnalytics = async (req, res) => {
     }
 };
 
+/**
+ * @desc    Get interested users for posts created by the logged-in admin
+ * @route   GET /api/admin/posts/interested-applications
+ * @access  Private (admin)
+ */
+const getInterestedApplications = async (req, res) => {
+    try {
+        const userModel = req.admin.isUserAdmin ? 'User' : 'Admin';
+
+        const applications = await InterestedApplication.find()
+            .populate({
+                path: 'post',
+                match: {
+                    user: req.admin._id,
+                    userModel,
+                },
+                populate: {
+                    path: 'user',
+                    select: 'username display_name avatar_url',
+                },
+                select: 'content image_url video_url createdAt status user userModel',
+            })
+            .populate('applicant', 'username display_name avatar_url email')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const filteredApplications = applications.filter((application) => application.post);
+
+        const signedApplications = await Promise.all(filteredApplications.map(async (application) => {
+            const signedPost = await signSinglePostMedia(application.post);
+            const documents = await Promise.all((application.documents || []).map(async (document) => ({
+                ...document,
+                previewUrl: await signR2ObjectKey(document.r2Key),
+            })));
+
+            return {
+                ...application,
+                post: signedPost,
+                documents,
+            };
+        }));
+
+        res.json({
+            success: true,
+            data: signedApplications,
+        });
+    } catch (error) {
+        console.error('Admin interested applications error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch interested applications',
+        });
+    }
+};
+
 module.exports = {
     getAllPosts,
     createPost,
@@ -548,5 +604,6 @@ module.exports = {
     getTrustedPendingPosts,
     getRejectedPosts,
     approvePost,
-    rejectPost
+    rejectPost,
+    getInterestedApplications
 };
