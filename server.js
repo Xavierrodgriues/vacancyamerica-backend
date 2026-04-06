@@ -65,7 +65,7 @@ logRedis('socket-sub', redisSub);
 // ─── Socket.io setup ──────────────────────────────────────────────────────────
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173", "http://localhost:8080", "https://vacancyamerica-frontend.vercel.app"],
+        origin: ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000", "https://vacancyamerica-frontend.vercel.app"],
         methods: ['GET', 'POST']
     }
 });
@@ -146,4 +146,23 @@ app.use('/api/superadmin/notifications', require('./admin/routes/notificationRou
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+async function startServer() {
+    try{
+        await Promise.all([
+            redisClient.ping(),
+            redisPub.ping(),
+            redisSub.ping()
+        ]);
+
+        console.log("✅ Redis fully ready");
+
+        server.listen(PORT, () =>
+            console.log(`Server started on port ${PORT}`)
+        );
+    }catch(err){
+        console.error("❌ Redis not ready, retrying...");
+        setTimeout(startServer, 5000);  
+    }
+}
+
+startServer();
