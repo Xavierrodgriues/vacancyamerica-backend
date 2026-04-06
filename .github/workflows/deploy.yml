@@ -24,7 +24,7 @@ jobs:
           docker build -t vacancyamerica-backend .
       - name: Tag Image
         run: |
-          docker tag vacancyamerica:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica:latest
+          docker tag vacancyamerica-backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica:latest
       - name: Push Image
         run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica:latest
