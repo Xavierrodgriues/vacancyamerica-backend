@@ -131,6 +131,10 @@ app.use('/api/friends', require('./routes/friendRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/activity', require('./routes/activityRoutes'));
 
+app.get("/api/health", (req, res) => {
+    res.json({ message: "OK" });
+})
+
 // Admin routes
 app.use('/api/admin/auth', require('./admin/routes/adminAuthRoutes'));
 app.use('/api/admin/posts', require('./admin/routes/adminPostRoutes'));
