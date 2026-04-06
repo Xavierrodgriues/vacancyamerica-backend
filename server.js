@@ -87,7 +87,7 @@ app.set('io', io);
 setupChatSocket(io);
 
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:8080", "https://vacancyamerica-frontend.vercel.app"],
+    origin: ["http://localhost:5173", "http://localhost:8080","http://3.236.10.217:3000", "http://3.236.10.217", "https://vacancyamerica-frontend.vercel.app"],
 }));
 
 // Trust proxy if we are behind a reverse proxy (e.g. Render, Heroku, Nginx)
