@@ -65,7 +65,7 @@ logRedis('socket-sub', redisSub);
 // ─── Socket.io setup ──────────────────────────────────────────────────────────
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000", "https://vacancyamerica-frontend.vercel.app"],
+        origin: ["http://localhost:5173", "http://localhost:8080","http://3.236.10.217:5000", "http://3.236.10.217", "http://3.236.10.217:3000", "http://localhost:3000", "https://vacancyamerica-frontend.vercel.app"],
         methods: ['GET', 'POST']
     }
 });
