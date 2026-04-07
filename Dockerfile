@@ -10,6 +10,8 @@ RUN npm install --omit=dev
 
 COPY . .
 
+RUN npm install -g pm2
+
 EXPOSE 5000
 
-CMD ["node", "server.js"]
+CMD ["pm2-runtime", "start", "server.js", "-i", "max"];
