@@ -62,10 +62,22 @@ logRedis('rate-limit', redisClient);
 logRedis('socket-pub', redisPub);
 logRedis('socket-sub', redisSub);
 
+// ─── CORS origins ─────────────────────────────────────────────────────────────
+// Set CORS_ORIGINS in your .env as a comma-separated list of allowed origins.
+// Defaults cover local dev (Vite ports) and Docker (port 3000).
+const CORS_ORIGINS = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+    : [
+        'http://localhost:5173',
+        'http://localhost:8080',
+        'http://localhost:3000',
+        'https://vacancyamerica-frontend.vercel.app'
+    ];
+
 // ─── Socket.io setup ──────────────────────────────────────────────────────────
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173", "http://localhost:8080","http://3.236.10.217:5000", "http://3.236.10.217", "http://3.236.10.217:3000", "http://localhost:3000", "https://vacancyamerica-frontend.vercel.app"],
+        origin: CORS_ORIGINS,
         methods: ['GET', 'POST']
     }
 });
@@ -87,7 +99,7 @@ app.set('io', io);
 setupChatSocket(io);
 
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:8080","http://3.236.10.217:3000", "http://3.236.10.217", "https://vacancyamerica-frontend.vercel.app"],
+    origin: CORS_ORIGINS,
 }));
 
 // Trust proxy if we are behind a reverse proxy (e.g. Render, Heroku, Nginx)

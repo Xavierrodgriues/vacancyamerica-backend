@@ -4,10 +4,12 @@ WORKDIR /app
 
 COPY package*.json .
 
-RUN npm install
+# Install all deps (including devDependencies for nodemon) in dev,
+# but in the Docker image we use the production start command.
+RUN npm install --omit=dev
 
 COPY . .
 
 EXPOSE 5000
 
-CMD ["npm", "run", "dev"]
+CMD ["node", "server.js"]
