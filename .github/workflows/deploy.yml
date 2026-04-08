@@ -22,9 +22,18 @@ jobs:
       - name: Build Image
         run: |
           docker build -t vacancyamerica-backend .
+
       - name: Tag Image
         run: |
           docker tag vacancyamerica-backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica-backend:latest
       - name: Push Image
         run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica-backend:latest
+
+        
+      - name: Trigger Infra Deployment
+        run: |
+          curl -X POST \
+          -H "Authorization: token ${{ secrets.INFRA_REPO_TOKEN }}" \
+          https://api.github.com/repos/Xavierrodgriues/vacancyamerica-infra/actions/workflows/deploy.yml/dispatches \
+          -d '{"ref":"main"}'
