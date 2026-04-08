@@ -25,9 +25,11 @@ jobs:
 
       - name: Tag Image
         run: |
+          docker tag vacancyamerica-backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica-backend:${{ github.sha }}
           docker tag vacancyamerica-backend:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica-backend:latest
       - name: Push Image
         run: |
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica-backend:${{ github.sha }}
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/vacancyamerica-backend:latest
 
         
