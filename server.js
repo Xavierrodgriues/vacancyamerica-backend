@@ -71,7 +71,8 @@ const CORS_ORIGINS = process.env.CORS_ORIGINS
         'http://localhost:5173',
         'http://localhost:8080',
         'http://localhost:3000',
-        'https://vacancyamerica-frontend.vercel.app'
+        'https://vacancyamerica-frontend.vercel.app',
+        'https://vacancyamerica-frontend-1.onrender.com'
     ];
 
 // ─── Socket.io setup ──────────────────────────────────────────────────────────
@@ -159,7 +160,7 @@ app.use('/api/superadmin/notifications', require('./admin/routes/notificationRou
 const PORT = process.env.PORT || 5000;
 
 async function startServer() {
-    try{
+    try {
         await Promise.all([
             redisClient.ping(),
             redisPub.ping(),
@@ -171,9 +172,9 @@ async function startServer() {
         server.listen(PORT, () =>
             console.log(`Server started on port ${PORT}`)
         );
-    }catch(err){
+    } catch (err) {
         console.error("❌ Redis not ready, retrying...");
-        setTimeout(startServer, 5000);  
+        setTimeout(startServer, 5000);
     }
 }
 
